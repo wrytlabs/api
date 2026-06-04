@@ -68,32 +68,32 @@ export class AccountingService {
   // Addresses
   // ---------------------------------------------------------------------------
 
-  async addAddress(userId: string, address: string, chain: string, label?: string) {
+  async addAddress(namespaceId: string, address: string, chain: string, label?: string) {
     const chainId = CHAIN_ID_MAP[chain];
     if (!chainId) throw new ConflictException(`Unsupported chain: ${chain}`);
     const normalised = address.toLowerCase();
     return this.prisma.accountingAddress.upsert({
-      where: { userId_address_chainId: { userId, address: normalised, chainId } },
-      create: { userId, address: normalised, chain, chainId, label },
+      where: { namespaceId_address_chainId: { namespaceId, address: normalised, chainId } },
+      create: { namespaceId, address: normalised, chain, chainId, label },
       update: { label, chain },
     });
   }
 
-  async listAddresses(userId: string) {
+  async listAddresses(namespaceId: string) {
     return this.prisma.accountingAddress.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  async updateAddress(userId: string, id: string, label: string | null) {
-    const row = await this.prisma.accountingAddress.findFirst({ where: { id, userId } });
+  async updateAddress(namespaceId: string, id: string, label: string | null) {
+    const row = await this.prisma.accountingAddress.findFirst({ where: { id, namespaceId } });
     if (!row) throw new NotFoundException('Address not found');
     return this.prisma.accountingAddress.update({ where: { id }, data: { label: label ?? null } });
   }
 
-  async removeAddress(userId: string, id: string) {
-    const row = await this.prisma.accountingAddress.findFirst({ where: { id, userId } });
+  async removeAddress(namespaceId: string, id: string) {
+    const row = await this.prisma.accountingAddress.findFirst({ where: { id, namespaceId } });
     if (!row) throw new NotFoundException('Address not found');
     await this.prisma.accountingAddress.delete({ where: { id } });
   }
@@ -102,8 +102,8 @@ export class AccountingService {
   // Sync
   // ---------------------------------------------------------------------------
 
-  async syncAddress(userId: string, id: string): Promise<{ synced: number }> {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id, userId } });
+  async syncAddress(namespaceId: string, id: string): Promise<{ synced: number }> {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     const blacklist = await this.prisma.accountingBlacklist.findMany({
@@ -223,7 +223,7 @@ export class AccountingService {
   // ---------------------------------------------------------------------------
 
   async getTransfers(
-    userId: string,
+    namespaceId: string,
     addressId: string,
     opts: {
       search?: string;
@@ -236,7 +236,7 @@ export class AccountingService {
       sortDir?: 'asc' | 'desc';
     },
   ) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     const where: any = { accountingAddressId: addressId };
@@ -270,15 +270,15 @@ export class AccountingService {
   }
 
   async updateTransfer(
-    userId: string,
+    namespaceId: string,
     transferId: string,
     data: { classification?: TransferClassification; isHidden?: boolean; chfValue?: string | null; notes?: string | null },
   ) {
     const transfer = await this.prisma.accountingTransfer.findUnique({
       where: { id: transferId },
-      include: { accountingAddress: { select: { userId: true } } },
+      include: { accountingAddress: { select: { namespaceId: true } } },
     });
-    if (!transfer || transfer.accountingAddress.userId !== userId) {
+    if (!transfer || transfer.accountingAddress.namespaceId !== namespaceId) {
       throw new NotFoundException('Transfer not found');
     }
 
@@ -293,7 +293,7 @@ export class AccountingService {
       ) {
         await this.prisma.journalEntry.deleteMany({ where: { transferId } });
       } else {
-        await this.upsertJournalEntry(userId, updated);
+        await this.upsertJournalEntry(namespaceId, updated);
       }
     }
 
@@ -304,9 +304,9 @@ export class AccountingService {
   // Journal entries (private helpers)
   // ---------------------------------------------------------------------------
 
-  private async upsertJournalEntry(userId: string, transfer: any): Promise<void> {
-    const accounts = await this.getAccountMap(userId);
-    const { debitId, creditId } = await this.resolveTemplate(userId, transfer, accounts);
+  private async upsertJournalEntry(namespaceId: string, transfer: any): Promise<void> {
+    const accounts = await this.getAccountMap(namespaceId);
+    const { debitId, creditId } = await this.resolveTemplate(namespaceId, transfer, accounts);
 
     if (!debitId || !creditId) {
       this.logger.warn(`No accounts found for journal entry on transfer ${transfer.id}`);
@@ -344,17 +344,17 @@ export class AccountingService {
   }
 
   private async resolveTemplate(
-    userId: string,
+    namespaceId: string,
     transfer: { classification: TransferClassification; direction: string },
     accountMap: Map<string, string>,
   ): Promise<{ debitId: string | undefined; creditId: string | undefined }> {
-    // Prefer direction-specific user override, fall back to ANY, then hardcoded defaults
+    // Prefer direction-specific namespace override, fall back to ANY, then hardcoded defaults
     const [specificRow, anyRow] = await Promise.all([
       this.prisma.classificationTemplate.findFirst({
-        where: { userId, classification: transfer.classification, direction: transfer.direction },
+        where: { namespaceId, classification: transfer.classification, direction: transfer.direction },
       }),
       this.prisma.classificationTemplate.findFirst({
-        where: { userId, classification: transfer.classification, direction: 'ANY' },
+        where: { namespaceId, classification: transfer.classification, direction: 'ANY' },
       }),
     ]);
     const dbRow = specificRow ?? anyRow;
@@ -378,33 +378,33 @@ export class AccountingService {
   // Chart of accounts
   // ---------------------------------------------------------------------------
 
-  async getAccounts(userId: string) {
-    await this.ensureDefaultAccounts(userId);
+  async getAccounts(namespaceId: string) {
+    await this.ensureDefaultAccounts(namespaceId);
     return this.prisma.accountingAccount.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: [{ type: 'asc' }, { code: 'asc' }, { name: 'asc' }],
     });
   }
 
   async createAccount(
-    userId: string,
+    namespaceId: string,
     data: { name: string; code?: string; type: AccountType; normalBalance: NormalBalance; description?: string },
   ) {
-    return this.prisma.accountingAccount.create({ data: { userId, ...data } });
+    return this.prisma.accountingAccount.create({ data: { namespaceId, ...data } });
   }
 
   async updateAccount(
-    userId: string,
+    namespaceId: string,
     id: string,
     data: { name?: string; code?: string; description?: string },
   ) {
-    const row = await this.prisma.accountingAccount.findFirst({ where: { id, userId } });
+    const row = await this.prisma.accountingAccount.findFirst({ where: { id, namespaceId } });
     if (!row) throw new NotFoundException('Account not found');
     return this.prisma.accountingAccount.update({ where: { id }, data });
   }
 
-  async deleteAccount(userId: string, id: string) {
-    const row = await this.prisma.accountingAccount.findFirst({ where: { id, userId } });
+  async deleteAccount(namespaceId: string, id: string) {
+    const row = await this.prisma.accountingAccount.findFirst({ where: { id, namespaceId } });
     if (!row) throw new NotFoundException('Account not found');
     const usedBy = await this.prisma.journalLine.count({ where: { accountId: id } });
     if (usedBy > 0) throw new ConflictException('Account has journal entries and cannot be deleted');
@@ -415,16 +415,16 @@ export class AccountingService {
   // Classification templates
   // ---------------------------------------------------------------------------
 
-  async getTemplates(userId: string) {
-    await this.ensureDefaultAccounts(userId);
+  async getTemplates(namespaceId: string) {
+    await this.ensureDefaultAccounts(namespaceId);
     const userTemplates = await this.prisma.classificationTemplate.findMany({
-      where: { userId },
+      where: { namespaceId },
       include: { debitAccount: true, creditAccount: true },
       orderBy: [{ classification: 'asc' }, { direction: 'asc' }],
     });
 
     // Merge with hardcoded defaults so the UI always shows all rows
-    const accountMap = await this.getAccountMap(userId);
+    const accountMap = await this.getAccountMap(namespaceId);
     const reverseMap = new Map(Array.from(accountMap.entries()).map(([name, id]) => [id, name]));
 
     const result = Object.entries(DEFAULT_TEMPLATES).map(([key, defaults]) => {
@@ -448,7 +448,7 @@ export class AccountingService {
   }
 
   async upsertTemplate(
-    userId: string,
+    namespaceId: string,
     data: {
       classification: TransferClassification;
       direction: string;
@@ -456,22 +456,22 @@ export class AccountingService {
       creditAccountId: string;
     },
   ) {
-    // Verify both accounts belong to this user
+    // Verify both accounts belong to this namespace
     const [debit, credit] = await Promise.all([
-      this.prisma.accountingAccount.findFirst({ where: { id: data.debitAccountId, userId } }),
-      this.prisma.accountingAccount.findFirst({ where: { id: data.creditAccountId, userId } }),
+      this.prisma.accountingAccount.findFirst({ where: { id: data.debitAccountId, namespaceId } }),
+      this.prisma.accountingAccount.findFirst({ where: { id: data.creditAccountId, namespaceId } }),
     ]);
     if (!debit || !credit) throw new NotFoundException('Account not found');
 
     return this.prisma.classificationTemplate.upsert({
-      where: { userId_classification_direction: { userId, classification: data.classification, direction: data.direction } },
-      create: { userId, ...data },
+      where: { namespaceId_classification_direction: { namespaceId, classification: data.classification, direction: data.direction } },
+      create: { namespaceId, ...data },
       update: { debitAccountId: data.debitAccountId, creditAccountId: data.creditAccountId },
     });
   }
 
-  async deleteTemplate(userId: string, id: string) {
-    const row = await this.prisma.classificationTemplate.findFirst({ where: { id, userId } });
+  async deleteTemplate(namespaceId: string, id: string) {
+    const row = await this.prisma.classificationTemplate.findFirst({ where: { id, namespaceId } });
     if (!row) throw new NotFoundException('Template not found');
     await this.prisma.classificationTemplate.delete({ where: { id } });
   }
@@ -480,11 +480,11 @@ export class AccountingService {
   // Trial balance
   // ---------------------------------------------------------------------------
 
-  async getTrialBalance(userId: string, addressId?: string) {
-    await this.ensureDefaultAccounts(userId);
+  async getTrialBalance(namespaceId: string, addressId?: string) {
+    await this.ensureDefaultAccounts(namespaceId);
 
     const accounts = await this.prisma.accountingAccount.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: [{ type: 'asc' }, { code: 'asc' }, { name: 'asc' }],
     });
 
@@ -493,7 +493,7 @@ export class AccountingService {
         journalEntry: {
           transfer: {
             accountingAddress: {
-              userId,
+              namespaceId,
               ...(addressId ? { id: addressId } : {}),
             },
           },
@@ -527,8 +527,8 @@ export class AccountingService {
   // Journal entries (for display)
   // ---------------------------------------------------------------------------
 
-  async getJournalEntries(userId: string, addressId: string) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getJournalEntries(namespaceId: string, addressId: string) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     return this.prisma.journalEntry.findMany({
@@ -545,8 +545,8 @@ export class AccountingService {
   // Token balances — per-token IN/OUT/balance aggregation
   // ---------------------------------------------------------------------------
 
-  async getTokenBalances(userId: string, addressId: string) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getTokenBalances(namespaceId: string, addressId: string) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     const transfers = await this.prisma.accountingTransfer.findMany({
@@ -617,8 +617,8 @@ export class AccountingService {
   // Token overview — per-token asset/liability/net + per-classification totals
   // ---------------------------------------------------------------------------
 
-  async getTokenOverview(userId: string, addressId: string, year?: number, quarter?: number) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getTokenOverview(namespaceId: string, addressId: string, year?: number, quarter?: number) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     // Overview always accumulates from the beginning up to the END of the selected period
@@ -794,10 +794,10 @@ export class AccountingService {
   // Legacy summary (kept for backwards compat)
   // ---------------------------------------------------------------------------
 
-  async getSummary(userId: string, addressId: string) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getSummary(namespaceId: string, addressId: string) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
-    const tb = await this.getTrialBalance(userId, addressId);
+    const tb = await this.getTrialBalance(namespaceId, addressId);
     return { address: acct, trialBalance: tb };
   }
 
@@ -833,20 +833,20 @@ export class AccountingService {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private async getAccountMap(userId: string): Promise<Map<string, string>> {
+  private async getAccountMap(namespaceId: string): Promise<Map<string, string>> {
     const accounts = await this.prisma.accountingAccount.findMany({
-      where: { userId },
+      where: { namespaceId },
       select: { id: true, name: true },
     });
     return new Map(accounts.map(a => [a.name, a.id]));
   }
 
-  private async ensureDefaultAccounts(userId: string): Promise<void> {
-    const count = await this.prisma.accountingAccount.count({ where: { userId } });
+  private async ensureDefaultAccounts(namespaceId: string): Promise<void> {
+    const count = await this.prisma.accountingAccount.count({ where: { namespaceId } });
     if (count > 0) return;
 
     await this.prisma.accountingAccount.createMany({
-      data: DEFAULT_ACCOUNTS.map(a => ({ ...a, userId })),
+      data: DEFAULT_ACCOUNTS.map(a => ({ ...a, namespaceId })),
       skipDuplicates: true,
     });
   }
@@ -855,20 +855,20 @@ export class AccountingService {
   // Counterparty labels (global per user — address → friendly name)
   // ---------------------------------------------------------------------------
 
-  async getCounterpartyLabels(userId: string): Promise<Record<string, string>> {
-    const rows = await this.prisma.accountingCounterpartyLabel.findMany({ where: { userId } });
+  async getCounterpartyLabels(namespaceId: string): Promise<Record<string, string>> {
+    const rows = await this.prisma.accountingCounterpartyLabel.findMany({ where: { namespaceId } });
     return Object.fromEntries(rows.map(r => [r.address, r.label]));
   }
 
-  async upsertCounterpartyLabel(userId: string, address: string, label: string | null) {
+  async upsertCounterpartyLabel(namespaceId: string, address: string, label: string | null) {
     const normalised = address.toLowerCase();
     if (!label) {
-      await this.prisma.accountingCounterpartyLabel.deleteMany({ where: { userId, address: normalised } });
+      await this.prisma.accountingCounterpartyLabel.deleteMany({ where: { namespaceId, address: normalised } });
       return null;
     }
     return this.prisma.accountingCounterpartyLabel.upsert({
-      where: { userId_address: { userId, address: normalised } },
-      create: { userId, address: normalised, label },
+      where: { namespaceId_address: { namespaceId, address: normalised } },
+      create: { namespaceId, address: normalised, label },
       update: { label },
     });
   }
@@ -877,15 +877,15 @@ export class AccountingService {
   // Token year-end prices (user-entered, per address + year)
   // ---------------------------------------------------------------------------
 
-  async getTokenPrices(userId: string, addressId: string, year: number): Promise<Record<string, string>> {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getTokenPrices(namespaceId: string, addressId: string, year: number): Promise<Record<string, string>> {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
     const rows = await this.prisma.accountingTokenPrice.findMany({ where: { accountingAddressId: addressId, year } });
     return Object.fromEntries(rows.map(r => [r.tokenSymbol, r.priceChf]));
   }
 
-  async upsertTokenPrice(userId: string, addressId: string, year: number, tokenSymbol: string, priceChf: string | null) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async upsertTokenPrice(namespaceId: string, addressId: string, year: number, tokenSymbol: string, priceChf: string | null) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
     if (!priceChf) {
       await this.prisma.accountingTokenPrice.deleteMany({ where: { accountingAddressId: addressId, year, tokenSymbol } });
@@ -902,8 +902,8 @@ export class AccountingService {
   // Adjustments (manual corrections / profit / loss entries)
   // ---------------------------------------------------------------------------
 
-  async getAdjustments(userId: string, addressId: string, year?: number, quarter?: number) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+  async getAdjustments(namespaceId: string, addressId: string, year?: number, quarter?: number) {
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     let dateFilter: { gte?: Date; lt?: Date } | undefined;
@@ -930,11 +930,11 @@ export class AccountingService {
   }
 
   async createAdjustment(
-    userId: string,
+    namespaceId: string,
     addressId: string,
     body: { date?: string; type: string; tokenSymbol?: string; amount?: string; chfValue?: string; note?: string },
   ) {
-    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, userId } });
+    const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
 
     return this.prisma.accountingAdjustment.create({
@@ -951,7 +951,7 @@ export class AccountingService {
   }
 
   async updateAdjustment(
-    userId: string,
+    namespaceId: string,
     id: string,
     body: { date?: string; type?: string; tokenSymbol?: string | null; amount?: string | null; chfValue?: string | null; note?: string | null },
   ) {
@@ -959,7 +959,7 @@ export class AccountingService {
       where: { id },
       include: { accountingAddress: true },
     });
-    if (!adj || adj.accountingAddress.userId !== userId) throw new NotFoundException('Adjustment not found');
+    if (!adj || adj.accountingAddress.namespaceId !== namespaceId) throw new NotFoundException('Adjustment not found');
 
     return this.prisma.accountingAdjustment.update({
       where: { id },
@@ -974,12 +974,12 @@ export class AccountingService {
     });
   }
 
-  async deleteAdjustment(userId: string, id: string) {
+  async deleteAdjustment(namespaceId: string, id: string) {
     const adj = await this.prisma.accountingAdjustment.findFirst({
       where: { id },
       include: { accountingAddress: true },
     });
-    if (!adj || adj.accountingAddress.userId !== userId) throw new NotFoundException('Adjustment not found');
+    if (!adj || adj.accountingAddress.namespaceId !== namespaceId) throw new NotFoundException('Adjustment not found');
     await this.prisma.accountingAdjustment.delete({ where: { id } });
   }
 }

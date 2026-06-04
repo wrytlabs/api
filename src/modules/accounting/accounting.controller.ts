@@ -12,19 +12,22 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiSecurity, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiHeader, ApiTags, ApiOperation, ApiSecurity, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { TransferClassification, AccountType, NormalBalance } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
+import { NamespaceGuard } from '../../common/guards/namespace.guard';
+import { CurrentNamespace } from '../../common/decorators/current-namespace.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { User } from '@prisma/client';
+import type { Namespace, User } from '@prisma/client';
 
 @ApiTags('Accounting')
 @ApiSecurity('api-key')
-@UseGuards(ScopesGuard)
+@UseGuards(ScopesGuard, NamespaceGuard)
 @RequireScopes('USER')
 @Controller('accounting')
+@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
 export class AccountingController {
   constructor(private readonly service: AccountingService) {}
 
@@ -46,16 +49,16 @@ export class AccountingController {
     },
   })
   addAddress(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Body() body: { address: string; chain: string; label?: string },
   ) {
-    return this.service.addAddress(user.id, body.address, body.chain, body.label);
+    return this.service.addAddress(namespace.id, body.address, body.chain, body.label);
   }
 
   @Get('addresses')
   @ApiOperation({ summary: 'List tracked wallet addresses' })
-  listAddresses(@CurrentUser() user: User) {
-    return this.service.listAddresses(user.id);
+  listAddresses(@CurrentNamespace() namespace: Namespace) {
+    return this.service.listAddresses(namespace.id);
   }
 
   @Patch('addresses/:id')
@@ -63,26 +66,26 @@ export class AccountingController {
   @ApiOperation({ summary: 'Update label of a tracked address' })
   @ApiParam({ name: 'id' })
   updateAddress(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { label?: string | null },
   ) {
-    return this.service.updateAddress(user.id, id, body.label ?? null);
+    return this.service.updateAddress(namespace.id, id, body.label ?? null);
   }
 
   @Delete('addresses/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a tracked address and its transfers' })
   @ApiParam({ name: 'id' })
-  removeAddress(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.removeAddress(user.id, id);
+  removeAddress(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.removeAddress(namespace.id, id);
   }
 
   @Post('addresses/:id/sync')
   @ApiOperation({ summary: 'Sync all token transfers from Alchemy for this address' })
   @ApiParam({ name: 'id' })
-  syncAddress(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.syncAddress(user.id, id);
+  syncAddress(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.syncAddress(namespace.id, id);
   }
 
   // ---------------------------------------------------------------------------
@@ -101,7 +104,7 @@ export class AccountingController {
   @ApiQuery({ name: 'sortBy', required: false })
   @ApiQuery({ name: 'sortDir', required: false, enum: ['asc', 'desc'] })
   getTransfers(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Query('search') search?: string,
     @Query('classification') classification?: string,
@@ -112,7 +115,7 @@ export class AccountingController {
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
   ) {
-    return this.service.getTransfers(user.id, id, {
+    return this.service.getTransfers(namespace.id, id, {
       search,
       classification,
       direction,
@@ -127,15 +130,15 @@ export class AccountingController {
   @Get('addresses/:id/summary')
   @ApiOperation({ summary: 'Accounting summary grouped by token (assets/liabilities)' })
   @ApiParam({ name: 'id' })
-  getSummary(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.getSummary(user.id, id);
+  getSummary(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.getSummary(namespace.id, id);
   }
 
   @Get('addresses/:id/token-balances')
   @ApiOperation({ summary: 'Per-token IN/OUT balance breakdown for a tracked address' })
   @ApiParam({ name: 'id' })
-  getTokenBalances(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.getTokenBalances(user.id, id);
+  getTokenBalances(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.getTokenBalances(namespace.id, id);
   }
 
   @Get('addresses/:id/token-overview')
@@ -144,13 +147,13 @@ export class AccountingController {
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   getTokenOverview(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Query('year') year?: string,
     @Query('quarter') quarter?: string,
   ) {
     return this.service.getTokenOverview(
-      user.id, id,
+      namespace.id, id,
       year ? parseInt(year, 10) : undefined,
       quarter ? parseInt(quarter, 10) : undefined,
     );
@@ -172,11 +175,11 @@ export class AccountingController {
     },
   })
   updateTransfer(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { classification?: TransferClassification; isHidden?: boolean; chfValue?: string | null; notes?: string | null },
   ) {
-    return this.service.updateTransfer(user.id, id, body);
+    return this.service.updateTransfer(namespace.id, id, body);
   }
 
   // ---------------------------------------------------------------------------
@@ -224,8 +227,8 @@ export class AccountingController {
 
   @Get('accounts')
   @ApiOperation({ summary: 'List chart of accounts for the current user' })
-  getAccounts(@CurrentUser() user: User) {
-    return this.service.getAccounts(user.id);
+  getAccounts(@CurrentNamespace() namespace: Namespace) {
+    return this.service.getAccounts(namespace.id);
   }
 
   @Post('accounts')
@@ -244,10 +247,10 @@ export class AccountingController {
     },
   })
   createAccount(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Body() body: { name: string; code?: string; type: AccountType; normalBalance: NormalBalance; description?: string },
   ) {
-    return this.service.createAccount(user.id, body);
+    return this.service.createAccount(namespace.id, body);
   }
 
   @Patch('accounts/:id')
@@ -265,19 +268,19 @@ export class AccountingController {
     },
   })
   updateAccount(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { name?: string; code?: string; description?: string },
   ) {
-    return this.service.updateAccount(user.id, id, body);
+    return this.service.updateAccount(namespace.id, id, body);
   }
 
   @Delete('accounts/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete an account (only if no journal lines reference it)' })
   @ApiParam({ name: 'id' })
-  deleteAccount(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.deleteAccount(user.id, id);
+  deleteAccount(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.deleteAccount(namespace.id, id);
   }
 
   // ---------------------------------------------------------------------------
@@ -286,8 +289,8 @@ export class AccountingController {
 
   @Get('templates')
   @ApiOperation({ summary: 'List all classification templates (defaults + user overrides)' })
-  getTemplates(@CurrentUser() user: User) {
-    return this.service.getTemplates(user.id);
+  getTemplates(@CurrentNamespace() namespace: Namespace) {
+    return this.service.getTemplates(namespace.id);
   }
 
   @Put('templates')
@@ -306,18 +309,18 @@ export class AccountingController {
     },
   })
   upsertTemplate(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Body() body: { classification: TransferClassification; direction: string; debitAccountId: string; creditAccountId: string },
   ) {
-    return this.service.upsertTemplate(user.id, body);
+    return this.service.upsertTemplate(namespace.id, body);
   }
 
   @Delete('templates/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a template override (reverts to default)' })
   @ApiParam({ name: 'id' })
-  deleteTemplate(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.deleteTemplate(user.id, id);
+  deleteTemplate(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.deleteTemplate(namespace.id, id);
   }
 
   // ---------------------------------------------------------------------------
@@ -327,8 +330,8 @@ export class AccountingController {
   @Get('trial-balance')
   @ApiOperation({ summary: 'Trial balance across all addresses' })
   @ApiQuery({ name: 'addressId', required: false })
-  getTrialBalance(@CurrentUser() user: User, @Query('addressId') addressId?: string) {
-    return this.service.getTrialBalance(user.id, addressId);
+  getTrialBalance(@CurrentNamespace() namespace: Namespace, @Query('addressId') addressId?: string) {
+    return this.service.getTrialBalance(namespace.id, addressId);
   }
 
   // ---------------------------------------------------------------------------
@@ -338,8 +341,8 @@ export class AccountingController {
   @Get('addresses/:id/journal')
   @ApiOperation({ summary: 'Journal entries for a tracked address' })
   @ApiParam({ name: 'id' })
-  getJournalEntries(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.getJournalEntries(user.id, id);
+  getJournalEntries(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.getJournalEntries(namespace.id, id);
   }
 
   // ---------------------------------------------------------------------------
@@ -348,18 +351,18 @@ export class AccountingController {
 
   @Get('counterparty-labels')
   @ApiOperation({ summary: 'Get all counterparty address labels for the current user' })
-  getCounterpartyLabels(@CurrentUser() user: User) {
-    return this.service.getCounterpartyLabels(user.id);
+  getCounterpartyLabels(@CurrentNamespace() namespace: Namespace) {
+    return this.service.getCounterpartyLabels(namespace.id);
   }
 
   @Post('counterparty-labels')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Upsert (or delete when label is null) a counterparty label' })
   upsertCounterpartyLabel(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Body() body: { address: string; label: string | null },
   ) {
-    return this.service.upsertCounterpartyLabel(user.id, body.address, body.label);
+    return this.service.upsertCounterpartyLabel(namespace.id, body.address, body.label);
   }
 
   // ---------------------------------------------------------------------------
@@ -370,8 +373,8 @@ export class AccountingController {
   @ApiOperation({ summary: 'Get user-entered year-end prices for all tokens of an address' })
   @ApiParam({ name: 'id' })
   @ApiQuery({ name: 'year', required: true, type: Number })
-  getTokenPrices(@CurrentUser() user: User, @Param('id') id: string, @Query('year') year: string) {
-    return this.service.getTokenPrices(user.id, id, parseInt(year, 10));
+  getTokenPrices(@CurrentNamespace() namespace: Namespace, @Param('id') id: string, @Query('year') year: string) {
+    return this.service.getTokenPrices(namespace.id, id, parseInt(year, 10));
   }
 
   @Post('addresses/:id/token-prices')
@@ -379,11 +382,11 @@ export class AccountingController {
   @ApiOperation({ summary: 'Upsert a year-end CHF price for a token' })
   @ApiParam({ name: 'id' })
   upsertTokenPrice(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { year: number; tokenSymbol: string; priceChf: string | null },
   ) {
-    return this.service.upsertTokenPrice(user.id, id, body.year, body.tokenSymbol, body.priceChf);
+    return this.service.upsertTokenPrice(namespace.id, id, body.year, body.tokenSymbol, body.priceChf);
   }
 
   // ---------------------------------------------------------------------------
@@ -396,13 +399,13 @@ export class AccountingController {
   @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiQuery({ name: 'quarter', required: false, type: Number })
   getAdjustments(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Query('year') year?: string,
     @Query('quarter') quarter?: string,
   ) {
     return this.service.getAdjustments(
-      user.id, id,
+      namespace.id, id,
       year ? parseInt(year, 10) : undefined,
       quarter ? parseInt(quarter, 10) : undefined,
     );
@@ -413,11 +416,11 @@ export class AccountingController {
   @ApiOperation({ summary: 'Create a manual adjustment entry' })
   @ApiParam({ name: 'id' })
   createAdjustment(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { date?: string; type: string; tokenSymbol?: string; amount?: string; chfValue?: string; note?: string },
   ) {
-    return this.service.createAdjustment(user.id, id, body);
+    return this.service.createAdjustment(namespace.id, id, body);
   }
 
   @Patch('adjustments/:id')
@@ -425,18 +428,18 @@ export class AccountingController {
   @ApiOperation({ summary: 'Update a manual adjustment entry' })
   @ApiParam({ name: 'id' })
   updateAdjustment(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { date?: string; type?: string; tokenSymbol?: string | null; amount?: string | null; chfValue?: string | null; note?: string | null },
   ) {
-    return this.service.updateAdjustment(user.id, id, body);
+    return this.service.updateAdjustment(namespace.id, id, body);
   }
 
   @Delete('adjustments/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a manual adjustment entry' })
   @ApiParam({ name: 'id' })
-  deleteAdjustment(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.deleteAdjustment(user.id, id);
+  deleteAdjustment(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.deleteAdjustment(namespace.id, id);
   }
 }

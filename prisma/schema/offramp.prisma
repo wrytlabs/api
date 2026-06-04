@@ -23,25 +23,30 @@ enum OffRampExecutionStatus {
 }
 
 model BankAccount {
-  id        String       @id @default(cuid())
-  userId    String
-  iban      String       // AES-256-GCM encrypted
-  bic       String
-  currency  FiatCurrency
-  label     String       @default("default")
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id          String       @id @default(cuid())
+  userId      String?      // deprecated — kept for migration
+  namespaceId String?
+  iban        String       // AES-256-GCM encrypted
+  bic         String
+  currency    FiatCurrency
+  label       String       @default("default")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace     Namespace?     @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   offRampRoutes OffRampRoute[]
 
   @@unique([userId, label])
+  @@unique([namespaceId, label])
   @@index([userId])
+  @@index([namespaceId])
 }
 
 model OffRampRoute {
   id             String             @id @default(cuid())
-  userId         String
+  userId         String?            // deprecated — kept for migration
+  namespaceId    String?
   label          String
   safeWalletId   String             @unique
   targetCurrency FiatCurrency
@@ -50,20 +55,24 @@ model OffRampRoute {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace   Namespace?       @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   safeWallet  SafeWallet       @relation(fields: [safeWalletId], references: [id])
   bankAccount BankAccount      @relation(fields: [bankAccountId], references: [id])
   executions  OffRampExecution[]
 
   @@unique([userId, label])
+  @@unique([namespaceId, label])
   @@index([userId])
+  @@index([namespaceId])
   @@index([status])
 }
 
 model OffRampExecution {
   id                    String                 @id @default(cuid())
   routeId               String
-  userId                String
+  userId                String?   // deprecated — kept for migration/audit trail
+  namespaceId           String?
   status                OffRampExecutionStatus @default(DETECTED)
   depositTokenSymbol    String
   depositTokenAmount    Decimal                @db.Decimal(36, 18)

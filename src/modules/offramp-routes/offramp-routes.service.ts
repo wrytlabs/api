@@ -28,9 +28,9 @@ export class OffRampRoutesService {
     private readonly safe: SafeService,
   ) {}
 
-  async create(userId: string, dto: CreateRouteDto) {
+  async create(namespaceId: string, dto: CreateRouteDto) {
     const bankAccount = await this.prisma.bankAccount.findFirst({
-      where: { id: dto.bankAccountId, userId },
+      where: { id: dto.bankAccountId, namespaceId },
     });
     if (!bankAccount) throw new NotFoundException('Bank account not found');
 
@@ -41,15 +41,15 @@ export class OffRampRoutesService {
     }
 
     const existing = await this.prisma.offRampRoute.findUnique({
-      where: { userId_label: { userId, label: dto.label } },
+      where: { namespaceId_label: { namespaceId, label: dto.label } },
     });
     if (existing) throw new ConflictException(`Route with label "${dto.label}" already exists`);
 
-    const safeWallet = await this.safe.getOrCreate(userId, 1, `offramp:${dto.bankAccountId}:${dto.targetCurrency}`);
+    const safeWallet = await this.safe.getOrCreate(namespaceId, 1, `offramp:${dto.bankAccountId}:${dto.targetCurrency}`);
 
     const route = await this.prisma.offRampRoute.create({
       data: {
-        userId,
+        namespaceId,
         label: dto.label,
         safeWalletId: safeWallet.id,
         targetCurrency: dto.targetCurrency,
@@ -61,9 +61,9 @@ export class OffRampRoutesService {
     return { ...route, depositAddress: safeWallet.address };
   }
 
-  async list(userId: string) {
+  async list(namespaceId: string) {
     const routes = await this.prisma.offRampRoute.findMany({
-      where: { userId },
+      where: { namespaceId },
       include: {
         safeWallet: { select: { address: true, deployed: true } },
         bankAccount: { select: { currency: true, label: true } },
@@ -73,9 +73,9 @@ export class OffRampRoutesService {
     return routes.map((r) => ({ ...r, depositAddress: r.safeWallet.address }));
   }
 
-  async get(id: string, userId: string) {
+  async get(id: string, namespaceId: string) {
     const route = await this.prisma.offRampRoute.findFirst({
-      where: { id, userId },
+      where: { id, namespaceId },
       include: {
         safeWallet: { select: { address: true, deployed: true, chainId: true } },
         bankAccount: { select: { currency: true, label: true } },
@@ -85,15 +85,15 @@ export class OffRampRoutesService {
     return { ...route, depositAddress: route.safeWallet.address };
   }
 
-  async pause(id: string, userId: string) {
-    const route = await this.prisma.offRampRoute.findFirst({ where: { id, userId } });
+  async pause(id: string, namespaceId: string) {
+    const route = await this.prisma.offRampRoute.findFirst({ where: { id, namespaceId } });
     if (!route) throw new NotFoundException('Route not found');
     if (route.status === OffRampRouteStatus.PAUSED) throw new BadRequestException('Route is already paused');
     return this.prisma.offRampRoute.update({ where: { id }, data: { status: OffRampRouteStatus.PAUSED } });
   }
 
-  async activate(id: string, userId: string) {
-    const route = await this.prisma.offRampRoute.findFirst({ where: { id, userId } });
+  async activate(id: string, namespaceId: string) {
+    const route = await this.prisma.offRampRoute.findFirst({ where: { id, namespaceId } });
     if (!route) throw new NotFoundException('Route not found');
     if (route.status === OffRampRouteStatus.ACTIVE) throw new BadRequestException('Route is already active');
     return this.prisma.offRampRoute.update({ where: { id }, data: { status: OffRampRouteStatus.ACTIVE } });
@@ -105,13 +105,13 @@ export class OffRampRoutesService {
     return this.prisma.offRampRoute.delete({ where: { id } });
   }
 
-  async update(id: string, userId: string, dto: UpdateRouteDto) {
-    const route = await this.prisma.offRampRoute.findFirst({ where: { id, userId } });
+  async update(id: string, namespaceId: string, dto: UpdateRouteDto) {
+    const route = await this.prisma.offRampRoute.findFirst({ where: { id, namespaceId } });
     if (!route) throw new NotFoundException('Route not found');
 
     if (dto.label && dto.label !== route.label) {
       const conflict = await this.prisma.offRampRoute.findUnique({
-        where: { userId_label: { userId, label: dto.label } },
+        where: { namespaceId_label: { namespaceId, label: dto.label } },
       });
       if (conflict) throw new ConflictException(`Route with label "${dto.label}" already exists`);
     }

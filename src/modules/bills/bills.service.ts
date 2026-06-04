@@ -53,7 +53,7 @@ export class BillsService implements OnModuleInit {
     }
   }
 
-  async upload(userId: string, file: Express.Multer.File): Promise<BillResponseDto> {
+  async upload(namespaceId: string, file: Express.Multer.File): Promise<BillResponseDto> {
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException(`Unsupported file type: ${file.mimetype}. Allowed: PDF, JPEG, PNG, WEBP, GIF`);
     }
@@ -61,11 +61,11 @@ export class BillsService implements OnModuleInit {
       throw new BadRequestException('File exceeds 10 MB limit');
     }
 
-    const safeWallet = await this.safe.getOrCreate(userId, BILL_CHAIN_ID, BILL_SAFE_LABEL);
+    const safeWallet = await this.safe.getOrCreate(namespaceId, BILL_CHAIN_ID, BILL_SAFE_LABEL);
 
     const bill = await this.prisma.invoice.create({
       data: {
-        userId,
+        namespaceId,
         fileName: file.originalname,
         fileType: file.mimetype,
         fileData: Buffer.from(file.buffer),
@@ -78,9 +78,9 @@ export class BillsService implements OnModuleInit {
     return this.toDto(bill);
   }
 
-  async list(userId: string): Promise<BillResponseDto[]> {
+  async list(namespaceId: string): Promise<BillResponseDto[]> {
     const bills = await this.prisma.invoice.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: { createdAt: 'desc' },
       take: 50,
       omit: { fileData: true },
@@ -88,9 +88,9 @@ export class BillsService implements OnModuleInit {
     return bills.map((b) => this.toDto(b));
   }
 
-  async get(id: string, userId: string): Promise<BillResponseDto> {
+  async get(id: string, namespaceId: string): Promise<BillResponseDto> {
     const bill = await this.prisma.invoice.findFirst({
-      where: { id, userId },
+      where: { id, namespaceId },
       omit: { fileData: true },
     });
     if (!bill) throw new NotFoundException('Bill not found');
@@ -99,10 +99,10 @@ export class BillsService implements OnModuleInit {
 
   async update(
     id: string,
-    userId: string,
+    namespaceId: string,
     data: { fromName?: string | null; amount?: string | null; currency?: string | null; itemTags?: string[] },
   ): Promise<BillResponseDto> {
-    const bill = await this.prisma.invoice.findFirst({ where: { id, userId } });
+    const bill = await this.prisma.invoice.findFirst({ where: { id, namespaceId } });
     if (!bill) throw new NotFoundException('Bill not found');
     const updated = await this.prisma.invoice.update({
       where: { id },
@@ -135,7 +135,7 @@ export class BillsService implements OnModuleInit {
   private toDto(bill: Record<string, unknown>): BillResponseDto {
     return {
       id: bill.id as string,
-      userId: bill.userId as string,
+      namespaceId: bill.namespaceId as string,
       fileName: bill.fileName as string,
       fileType: bill.fileType as string,
       status: bill.status as InvoiceStatus,

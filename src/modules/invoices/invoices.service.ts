@@ -34,22 +34,22 @@ export class InvoicesService {
     return { subtotal, total: subtotal };
   }
 
-  private async nextNumber(userId: string): Promise<string> {
+  private async nextNumber(namespaceId: string): Promise<string> {
     const year = new Date().getFullYear();
-    const count = await this.prisma.outboundInvoice.count({ where: { userId } });
+    const count = await this.prisma.outboundInvoice.count({ where: { namespaceId } });
     return `INV-${year}-${String(count + 1).padStart(3, '0')}`;
   }
 
-  async create(userId: string, dto: CreateInvoiceDto): Promise<InvoiceResponseDto> {
+  async create(namespaceId: string, dto: CreateInvoiceDto): Promise<InvoiceResponseDto> {
     if (!dto.items || dto.items.length === 0) {
       throw new BadRequestException('Invoice must have at least one line item');
     }
-    const number = await this.nextNumber(userId);
+    const number = await this.nextNumber(namespaceId);
     const { subtotal, total } = this.computeTotals(dto.items);
 
     const invoice = await this.prisma.outboundInvoice.create({
       data: {
-        userId,
+        namespaceId,
         number,
         recipientName: dto.recipientName,
         recipientEmail: dto.recipientEmail ?? null,
@@ -67,23 +67,23 @@ export class InvoicesService {
     return this.toDto(invoice);
   }
 
-  async list(userId: string): Promise<InvoiceResponseDto[]> {
+  async list(namespaceId: string): Promise<InvoiceResponseDto[]> {
     const invoices = await this.prisma.outboundInvoice.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
     return invoices.map((i) => this.toDto(i));
   }
 
-  async get(id: string, userId: string): Promise<InvoiceResponseDto> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async get(id: string, namespaceId: string): Promise<InvoiceResponseDto> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     return this.toDto(invoice);
   }
 
-  async update(id: string, userId: string, dto: UpdateInvoiceDto): Promise<InvoiceResponseDto> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async update(id: string, namespaceId: string, dto: UpdateInvoiceDto): Promise<InvoiceResponseDto> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status !== OutboundInvoiceStatus.DRAFT) {
       throw new BadRequestException('Only draft invoices can be edited');
@@ -109,8 +109,8 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
-  async send(id: string, userId: string): Promise<InvoiceResponseDto> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async send(id: string, namespaceId: string): Promise<InvoiceResponseDto> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status !== OutboundInvoiceStatus.DRAFT) {
       throw new BadRequestException('Only draft invoices can be sent');
@@ -122,8 +122,8 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
-  async markPaid(id: string, userId: string): Promise<InvoiceResponseDto> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async markPaid(id: string, namespaceId: string): Promise<InvoiceResponseDto> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status === OutboundInvoiceStatus.PAID) {
       throw new BadRequestException('Invoice is already paid');
@@ -135,8 +135,8 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
-  async cancel(id: string, userId: string): Promise<InvoiceResponseDto> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async cancel(id: string, namespaceId: string): Promise<InvoiceResponseDto> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     if (invoice.status === OutboundInvoiceStatus.PAID) {
       throw new BadRequestException('Paid invoices cannot be cancelled');
@@ -148,8 +148,8 @@ export class InvoicesService {
     return this.toDto(updated);
   }
 
-  async delete(id: string, userId: string): Promise<void> {
-    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, userId } });
+  async delete(id: string, namespaceId: string): Promise<void> {
+    const invoice = await this.prisma.outboundInvoice.findFirst({ where: { id, namespaceId } });
     if (!invoice) throw new NotFoundException('Invoice not found');
     await this.prisma.outboundInvoice.delete({ where: { id } });
   }
@@ -157,7 +157,7 @@ export class InvoicesService {
   private toDto(invoice: Record<string, unknown>): InvoiceResponseDto {
     return {
       id: invoice.id as string,
-      userId: invoice.userId as string,
+      namespaceId: invoice.namespaceId as string,
       number: invoice.number as string,
       status: invoice.status as OutboundInvoiceStatus,
       recipientName: invoice.recipientName as string,

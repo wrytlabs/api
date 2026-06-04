@@ -2,7 +2,7 @@ import { InvoiceStatus } from '@prisma/client';
 
 export class BillResponseDto {
   id: string;
-  userId: string;
+  namespaceId: string | null;
   fileName: string;
   fileType: string;
   status: InvoiceStatus;

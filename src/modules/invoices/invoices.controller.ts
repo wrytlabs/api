@@ -10,18 +10,20 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiHeader, ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiBody } from '@nestjs/swagger';
 import { InvoicesService } from './invoices.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { User } from '@prisma/client';
+import { NamespaceGuard } from '../../common/guards/namespace.guard';
+import { CurrentNamespace } from '../../common/decorators/current-namespace.decorator';
+import type { Namespace } from '@prisma/client';
 
 @ApiTags('Invoices')
 @ApiSecurity('api-key')
-@UseGuards(ScopesGuard)
+@UseGuards(ScopesGuard, NamespaceGuard)
 @RequireScopes('USER')
 @Controller('invoices')
+@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
 export class InvoicesController {
   constructor(private readonly service: InvoicesService) {}
 
@@ -55,23 +57,23 @@ export class InvoicesController {
     },
   })
   @ApiResponse({ status: 201, description: 'Invoice created' })
-  create(@CurrentUser() user: User, @Body() body: Parameters<typeof this.service.create>[1]) {
-    return this.service.create(user.id, body);
+  create(@CurrentNamespace() namespace: Namespace, @Body() body: Parameters<typeof this.service.create>[1]) {
+    return this.service.create(namespace.id, body);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List own invoices' })
+  @ApiOperation({ summary: 'List namespace invoices' })
   @ApiResponse({ status: 200, description: 'Array of invoices' })
-  list(@CurrentUser() user: User) {
-    return this.service.list(user.id);
+  list(@CurrentNamespace() namespace: Namespace) {
+    return this.service.list(namespace.id);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single invoice' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
-  get(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.get(id, user.id);
+  get(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.get(id, namespace.id);
   }
 
   @Patch(':id')
@@ -79,35 +81,35 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Update a draft invoice' })
   @ApiParam({ name: 'id' })
   update(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: Parameters<typeof this.service.update>[2],
   ) {
-    return this.service.update(id, user.id, body);
+    return this.service.update(id, namespace.id, body);
   }
 
   @Patch(':id/send')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark invoice as sent' })
   @ApiParam({ name: 'id' })
-  send(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.send(id, user.id);
+  send(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.send(id, namespace.id);
   }
 
   @Patch(':id/mark-paid')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark invoice as paid' })
   @ApiParam({ name: 'id' })
-  markPaid(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.markPaid(id, user.id);
+  markPaid(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.markPaid(id, namespace.id);
   }
 
   @Patch(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel an invoice' })
   @ApiParam({ name: 'id' })
-  cancel(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.cancel(id, user.id);
+  cancel(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.cancel(id, namespace.id);
   }
 
   @Delete(':id')
@@ -115,7 +117,7 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Delete an invoice' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 404, description: 'Invoice not found' })
-  delete(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.delete(id, user.id);
+  delete(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.delete(id, namespace.id);
   }
 }

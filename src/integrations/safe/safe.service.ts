@@ -24,8 +24,8 @@ export class SafeService {
 		private readonly eventEmitter: EventEmitter2,
 	) {}
 
-	private deriveSaltNonce(userId: string, chainId: ChainId, label: string): string {
-		const hash = keccak256(toHex(`${userId}:${chainId}:${label}`));
+	private deriveSaltNonce(namespaceId: string, chainId: ChainId, label: string): string {
+		const hash = keccak256(toHex(`${namespaceId}:${chainId}:${label}`));
 		return BigInt(hash).toString();
 	}
 
@@ -61,32 +61,32 @@ export class SafeService {
 		});
 	}
 
-	async getOrCreate(userId: string, chainId: ChainId, label = 'primary') {
+	async getOrCreate(namespaceId: string, chainId: ChainId, label = 'primary') {
 		const existing = await this.prisma.safeWallet.findUnique({
-			where: { userId_chainId_label: { userId, chainId, label } },
+			where: { namespaceId_chainId_label: { namespaceId, chainId, label } },
 		});
 		if (existing) return existing;
 
-		const saltNonce = this.deriveSaltNonce(userId, chainId, label);
+		const saltNonce = this.deriveSaltNonce(namespaceId, chainId, label);
 		const sdk = await this.initSdk(saltNonce, chainId);
 		const address = await sdk.getAddress();
 
-		this.logger.log(`Predicted Safe for user ${userId} on chain ${chainId} [${label}]: ${address}`);
+		this.logger.log(`Predicted Safe for namespace ${namespaceId} on chain ${chainId} [${label}]: ${address}`);
 
 		return this.prisma.safeWallet.create({
-			data: { userId, chainId, label, address, saltNonce },
+			data: { namespaceId, chainId, label, address, saltNonce },
 		});
 	}
 
-	async listWallets(userId: string, chainId?: ChainId) {
+	async listWallets(namespaceId: string, chainId?: ChainId) {
 		return this.prisma.safeWallet.findMany({
-			where: { userId, ...(chainId ? { chainId } : {}) },
+			where: { namespaceId, ...(chainId ? { chainId } : {}) },
 			orderBy: { createdAt: 'asc' },
 		});
 	}
 
-	async ensureDeployed(userId: string, chainId: ChainId, label = 'primary'): Promise<void> {
-		const safeWallet = await this.getOrCreate(userId, chainId, label);
+	async ensureDeployed(namespaceId: string, chainId: ChainId, label = 'primary'): Promise<void> {
+		const safeWallet = await this.getOrCreate(namespaceId, chainId, label);
 		if (safeWallet.deployed) return;
 
 		const sdk = await this.initSdk(safeWallet.saltNonce, chainId);
@@ -100,7 +100,7 @@ export class SafeService {
 			return;
 		}
 
-		this.logger.log(`Deploying Safe ${safeWallet.address} for user ${userId} on chain ${chainId}`);
+		this.logger.log(`Deploying Safe ${safeWallet.address} for namespace ${namespaceId} on chain ${chainId}`);
 
 		const deployTx = await sdk.createSafeDeploymentTransaction();
 		const gasFees = await this.viemService.conservativeGasFees(chainId);
@@ -126,7 +126,7 @@ export class SafeService {
 			'notification.admin',
 			new AdminNotificationEvent(
 				'Safe Deployed',
-				`User \`${userId}\` deployed a Safe on chain ${chainId} \\[${label}\\]\nAddress: \`${safeWallet.address}\`\nTx: \`${hash}\``,
+				`Namespace \`${namespaceId}\` deployed a Safe on chain ${chainId} \\[${label}\\]\nAddress: \`${safeWallet.address}\`\nTx: \`${hash}\``,
 				'success',
 			),
 		);

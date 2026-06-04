@@ -22,18 +22,14 @@ export class NotificationListener {
 
   @OnEvent('notification')
   async handleNotification(event: NotificationEvent) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: event.userId },
-    });
-
-    if (!user || !user.notificationsEnabled) return;
-
-    const chatId = Number(user.telegramId);
     const emoji = LEVEL_EMOJI[event.level];
     const message = `${emoji} *${event.title}*\n\n${event.message}`;
 
+    const chatId = await this.resolveChatId(event.namespaceId);
+    if (!chatId) return;
+
     await this.telegramService.sendMarkdownMessage(chatId, message).catch((err) => {
-      this.logger.error(`Failed to send notification to user ${event.userId}: ${err.message}`);
+      this.logger.error(`Failed to send notification for namespace ${event.namespaceId}: ${err.message}`);
     });
   }
 
@@ -54,5 +50,34 @@ export class NotificationListener {
         }),
       ),
     );
+  }
+
+  /**
+   * Resolves the Telegram chat ID for a namespace notification.
+   * - If the namespace has a telegramGroupId, use the group chat.
+   * - Otherwise fall back to the OWNER's private chat (legacy/unmigrated namespaces).
+   */
+  private async resolveChatId(namespaceId: string): Promise<number | null> {
+    const namespace = await this.prisma.namespace.findUnique({
+      where: { id: namespaceId },
+      include: {
+        members: {
+          where: { role: 'OWNER' },
+          include: { user: { select: { telegramId: true, notificationsEnabled: true } } },
+          take: 1,
+        },
+      },
+    });
+
+    if (!namespace) return null;
+
+    if (namespace.telegramGroupId) {
+      return Number(namespace.telegramGroupId);
+    }
+
+    // Legacy namespace: fall back to owner's private chat
+    const owner = namespace.members[0]?.user;
+    if (!owner || !owner.notificationsEnabled) return null;
+    return Number(owner.telegramId);
   }
 }

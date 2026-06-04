@@ -45,6 +45,7 @@ import { UserWalletsModule } from './modules/user-wallets/user-wallets.module';
 import { BillsModule } from './modules/bills/bills.module';
 import { InvoicesModule } from './modules/invoices/invoices.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { NamespaceModule } from './modules/namespace/namespace.module';
 
 // Core modules
 import { OffRampCoreModule } from './core/offramp/offramp-core.module';
@@ -139,6 +140,7 @@ import { AppService } from './app.service';
     BillsModule,
     InvoicesModule,
     AccountingModule,
+    NamespaceModule,
   ],
   controllers: [AppController],
   providers: [

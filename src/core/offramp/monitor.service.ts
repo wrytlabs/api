@@ -157,7 +157,7 @@ export class MonitorService implements OnModuleInit {
 
 		const route = await this.prisma.offRampRoute.findUnique({
 			where: { id: params.routeId },
-			select: { userId: true },
+			select: { userId: true, namespaceId: true },
 		});
 		if (!route) return;
 
@@ -167,7 +167,8 @@ export class MonitorService implements OnModuleInit {
 
 		const execution = await this.executions.create({
 			routeId: params.routeId,
-			userId: route.userId,
+			userId: route.userId ?? undefined,
+			namespaceId: route.namespaceId ?? undefined,
 			depositTokenSymbol: params.tokenSymbol,
 			depositTokenAmount: params.tokenAmount,
 			depositTxHash: params.txHash,

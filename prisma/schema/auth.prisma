@@ -6,22 +6,24 @@ model User {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  apiKeys              ApiKey[]
-  magicLinks           MagicLink[]
-  scopes               UserScope[]
-  safeWallets          SafeWallet[]
-  profile              UserProfile?
-  bankAccounts         BankAccount[]
-  offRampRoutes        OffRampRoute[]
-  userWallets          UserWallet[]
-  walletAuthSessions   WalletAuthSession[]
-  invoices             Invoice[]
-  outboundInvoices     OutboundInvoice[]
-  accountingAddresses       AccountingAddress[]
-  accountingBlacklist       AccountingBlacklist[]
-  accountingAccounts        AccountingAccount[]
-  classificationTemplates   ClassificationTemplate[]
-  counterpartyLabels        AccountingCounterpartyLabel[]
+  apiKeys            ApiKey[]
+  magicLinks         MagicLink[]
+  scopes             UserScope[]
+  profile            UserProfile?
+  userWallets        UserWallet[]
+  walletAuthSessions WalletAuthSession[]
+  namespaces         NamespaceMember[]
+  // legacy direct ownership — kept during migration, removed once namespaceId is NOT NULL everywhere
+  safeWallets             SafeWallet[]
+  bankAccounts            BankAccount[]
+  offRampRoutes           OffRampRoute[]
+  invoices                Invoice[]
+  outboundInvoices        OutboundInvoice[]
+  accountingAddresses     AccountingAddress[]
+  accountingBlacklist     AccountingBlacklist[]
+  accountingAccounts      AccountingAccount[]
+  classificationTemplates ClassificationTemplate[]
+  counterpartyLabels      AccountingCounterpartyLabel[]
 }
 
 model UserProfile {

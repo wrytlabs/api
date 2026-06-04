@@ -8,9 +8,10 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id       String        @id @default(cuid())
-  userId   String
-  fileName String
+  id          String        @id @default(cuid())
+  userId      String?       // deprecated — kept for migration
+  namespaceId String?
+  fileName    String
   fileType String
   fileData Bytes
 
@@ -38,9 +39,11 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace Namespace? @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([namespaceId])
   @@index([status])
 }
 
@@ -52,9 +55,10 @@ enum OutboundInvoiceStatus {
 }
 
 model OutboundInvoice {
-  id               String                @id @default(cuid())
-  userId           String
-  number           String
+  id          String                @id @default(cuid())
+  userId      String?               // deprecated — kept for migration
+  namespaceId String?
+  number      String
   status           OutboundInvoiceStatus @default(DRAFT)
   recipientName    String
   recipientEmail   String?
@@ -69,8 +73,10 @@ model OutboundInvoice {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace Namespace? @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([namespaceId])
   @@index([status])
 }

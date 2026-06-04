@@ -1,19 +1,23 @@
 model SafeWallet {
-  id         String    @id @default(cuid())
-  userId     String
-  address    String    @unique
-  chainId    Int
-  label      String    @default("primary")
-  saltNonce  String
-  deployed   Boolean   @default(false)
-  deployedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id          String    @id @default(cuid())
+  userId      String?   // deprecated — kept for migration, will be removed after namespaceId is NOT NULL
+  namespaceId String?
+  address     String    @unique
+  chainId     Int
+  label       String    @default("primary")
+  saltNonce   String
+  deployed    Boolean   @default(false)
+  deployedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace    Namespace?    @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   offRampRoute OffRampRoute?
 
   @@unique([userId, chainId, label])
+  @@unique([namespaceId, chainId, label])
   @@index([userId])
+  @@index([namespaceId])
 }
 
 /// Linked external wallet (EOA). One address can belong to exactly one user.

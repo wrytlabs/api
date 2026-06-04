@@ -36,18 +36,18 @@ export class BankAccountsService {
     private readonly encryption: EncryptionService,
   ) {}
 
-  async create(userId: string, dto: CreateBankAccountDto) {
+  async create(namespaceId: string, dto: CreateBankAccountDto) {
     const label = dto.label ?? 'default';
 
     const existing = await this.prisma.bankAccount.findUnique({
-      where: { userId_label: { userId, label } },
+      where: { namespaceId_label: { namespaceId, label } },
     });
     if (existing) throw new ConflictException(`Bank account with label "${label}" already exists`);
 
     const iban = this.encryption.encrypt(dto.iban.replace(/\s/g, '').toUpperCase());
     return this.prisma.bankAccount.create({
       data: {
-        userId,
+        namespaceId,
         iban,
         bic: dto.bic.toUpperCase(),
         currency: dto.currency,
@@ -56,22 +56,22 @@ export class BankAccountsService {
     });
   }
 
-  async list(userId: string) {
+  async list(namespaceId: string) {
     const accounts = await this.prisma.bankAccount.findMany({
-      where: { userId },
+      where: { namespaceId },
       orderBy: { createdAt: 'asc' },
     });
     return accounts.map((a) => ({ ...a, iban: this.maskIban(this.encryption.decrypt(a.iban)) }));
   }
 
-  async getDecrypted(id: string, userId: string) {
-    const account = await this.prisma.bankAccount.findFirst({ where: { id, userId } });
+  async getDecrypted(id: string, namespaceId: string) {
+    const account = await this.prisma.bankAccount.findFirst({ where: { id, namespaceId } });
     if (!account) throw new NotFoundException('Bank account not found');
     return { ...account, iban: this.encryption.decrypt(account.iban) };
   }
 
-  async update(id: string, userId: string, dto: UpdateBankAccountDto) {
-    const account = await this.prisma.bankAccount.findFirst({ where: { id, userId } });
+  async update(id: string, namespaceId: string, dto: UpdateBankAccountDto) {
+    const account = await this.prisma.bankAccount.findFirst({ where: { id, namespaceId } });
     if (!account) throw new NotFoundException('Bank account not found');
 
     return this.prisma.bankAccount.update({
@@ -80,8 +80,8 @@ export class BankAccountsService {
     });
   }
 
-  async remove(id: string, userId: string) {
-    const account = await this.prisma.bankAccount.findFirst({ where: { id, userId } });
+  async remove(id: string, namespaceId: string) {
+    const account = await this.prisma.bankAccount.findFirst({ where: { id, namespaceId } });
     if (!account) throw new NotFoundException('Bank account not found');
 
     const inUse = await this.prisma.offRampRoute.findFirst({ where: { bankAccountId: id } });

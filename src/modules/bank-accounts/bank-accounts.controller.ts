@@ -11,6 +11,7 @@ import {
 	UseGuards,
 } from '@nestjs/common';
 import {
+	ApiHeader,
 	ApiTags,
 	ApiOperation,
 	ApiResponse,
@@ -25,42 +26,28 @@ import {
 } from './bank-accounts.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { User } from '@prisma/client';
+import { NamespaceGuard } from '../../common/guards/namespace.guard';
+import { CurrentNamespace } from '../../common/decorators/current-namespace.decorator';
+import type { Namespace } from '@prisma/client';
 
 @ApiTags('Bank Accounts')
 @ApiSecurity('api-key')
-@UseGuards(ScopesGuard)
+@UseGuards(ScopesGuard, NamespaceGuard)
 @RequireScopes('BANK')
 @Controller('bank-accounts')
+@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
 export class BankAccountsController {
 	constructor(private readonly service: BankAccountsService) {}
 
 	@Get()
-	@ApiOperation({ summary: 'List own bank accounts (IBAN masked)' })
-	@ApiResponse({
-		status: 200,
-		schema: {
-			example: [
-				{
-					id: 'cm9ba001abc',
-					userId: 'cm9usr789ghi012',
-					iban: 'CH56****5489',
-					bic: 'POFICHBEXXX',
-					currency: 'CHF',
-					label: 'main',
-					createdAt: '2026-01-15T09:00:00.000Z',
-					updatedAt: '2026-01-15T09:00:00.000Z',
-				},
-			],
-		},
-	})
-	list(@CurrentUser() user: User) {
-		return this.service.list(user.id);
+	@ApiOperation({ summary: 'List namespace bank accounts (IBAN masked)' })
+	@ApiResponse({ status: 200 })
+	list(@CurrentNamespace() namespace: Namespace) {
+		return this.service.list(namespace.id);
 	}
 
 	@Post()
-	@ApiOperation({ summary: 'Add a bank account' })
+	@ApiOperation({ summary: 'Add a bank account to the namespace' })
 	@ApiBody({
 		schema: {
 			type: 'object',
@@ -71,27 +58,12 @@ export class BankAccountsController {
 				currency: { type: 'string', enum: ['CHF', 'EUR'], example: 'CHF' },
 				label: { type: 'string', example: 'main', description: 'Defaults to "default"' },
 			},
-			example: { iban: 'CH5604835012345678009', bic: 'POFICHBEXXX', currency: 'CHF', label: 'main' },
 		},
 	})
-	@ApiResponse({
-		status: 201,
-		schema: {
-			example: {
-				id: 'cm9ba001abc',
-				userId: 'cm9usr789ghi012',
-				iban: 'CH56****8009',
-				bic: 'POFICHBEXXX',
-				currency: 'CHF',
-				label: 'main',
-				createdAt: '2026-04-05T10:00:00.000Z',
-				updatedAt: '2026-04-05T10:00:00.000Z',
-			},
-		},
-	})
+	@ApiResponse({ status: 201 })
 	@ApiResponse({ status: 409, description: 'Label already in use' })
-	create(@CurrentUser() user: User, @Body() dto: CreateBankAccountDto) {
-		return this.service.create(user.id, dto);
+	create(@CurrentNamespace() namespace: Namespace, @Body() dto: CreateBankAccountDto) {
+		return this.service.create(namespace.id, dto);
 	}
 
 	@Put(':id')
@@ -104,30 +76,26 @@ export class BankAccountsController {
 				bic: { type: 'string', example: 'POFICHBEXXX' },
 				label: { type: 'string', example: 'savings' },
 			},
-			example: { label: 'savings' },
 		},
 	})
 	@ApiResponse({ status: 200 })
 	@ApiResponse({ status: 404 })
 	update(
-		@CurrentUser() user: User,
+		@CurrentNamespace() namespace: Namespace,
 		@Param('id') id: string,
 		@Body() dto: UpdateBankAccountDto,
 	) {
-		return this.service.update(id, user.id, dto);
+		return this.service.update(id, namespace.id, dto);
 	}
 
 	@Delete(':id')
 	@HttpCode(HttpStatus.NO_CONTENT)
 	@RequireScopes('ADMIN')
-	@ApiOperation({
-		summary: 'Delete a bank account (admin only)',
-		description: 'Requires the ADMIN scope. Deletes the bank account permanently. Fails if the account is linked to an active off-ramp route.',
-	})
+	@ApiOperation({ summary: 'Delete a bank account (admin only)' })
 	@ApiParam({ name: 'id' })
 	@ApiResponse({ status: 204 })
 	@ApiResponse({ status: 409, description: 'Account linked to an active route' })
-	async remove(@CurrentUser() user: User, @Param('id') id: string) {
-		await this.service.remove(id, user.id);
+	async remove(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+		await this.service.remove(id, namespace.id);
 	}
 }

@@ -36,23 +36,27 @@ enum TransferClassification {
 }
 
 model AccountingAddress {
-  id           String    @id @default(cuid())
-  userId       String
-  address      String
-  label        String?
-  chain        String    // Alchemy chain slug, e.g. "eth-mainnet"
-  chainId      Int
+  id          String    @id @default(cuid())
+  userId      String?   // deprecated — kept for migration
+  namespaceId String?
+  address     String
+  label       String?
+  chain       String    // Alchemy chain slug, e.g. "eth-mainnet"
+  chainId     Int
   lastSyncedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user        User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace   Namespace?               @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   transfers   AccountingTransfer[]
   adjustments AccountingAdjustment[]
   tokenPrices AccountingTokenPrice[]
 
   @@unique([userId, address, chainId])
+  @@unique([namespaceId, address, chainId])
   @@index([userId])
+  @@index([namespaceId])
   @@map("accounting_addresses")
 }
 
@@ -92,17 +96,21 @@ model AccountingTransfer {
 }
 
 model AccountingCounterpartyLabel {
-  id        String   @id @default(cuid())
-  userId    String
-  address   String   // lowercase hex
-  label     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String?  // deprecated — kept for migration
+  namespaceId String?
+  address     String   // lowercase hex
+  label       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace Namespace? @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, address])
+  @@unique([namespaceId, address])
   @@index([userId])
+  @@index([namespaceId])
   @@map("accounting_counterparty_labels")
 }
 
@@ -156,23 +164,27 @@ model AccountingBlacklist {
 }
 
 model AccountingAccount {
-  id            String        @id @default(cuid())
-  userId        String
-  name          String
-  code          String?
-  type          AccountType
+  id          String        @id @default(cuid())
+  userId      String?       // deprecated — kept for migration
+  namespaceId String?
+  name        String
+  code        String?
+  type        AccountType
   normalBalance NormalBalance
-  description   String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace       Namespace?               @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   journalLines    JournalLine[]
   debitTemplates  ClassificationTemplate[] @relation("TemplateDebit")
   creditTemplates ClassificationTemplate[] @relation("TemplateCredit")
 
   @@unique([userId, name])
+  @@unique([namespaceId, name])
   @@index([userId])
+  @@index([namespaceId])
   @@map("accounting_accounts")
 }
 
@@ -210,7 +222,8 @@ model JournalLine {
 
 model ClassificationTemplate {
   id              String                 @id @default(cuid())
-  userId          String
+  userId          String?                // deprecated — kept for migration
+  namespaceId     String?
   classification  TransferClassification
   direction       String                 @default("ANY") // "IN" | "OUT" | "ANY"
   debitAccountId  String
@@ -218,11 +231,14 @@ model ClassificationTemplate {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  namespace     Namespace?        @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
   debitAccount  AccountingAccount @relation("TemplateDebit",  fields: [debitAccountId],  references: [id])
   creditAccount AccountingAccount @relation("TemplateCredit", fields: [creditAccountId], references: [id])
 
   @@unique([userId, classification, direction])
+  @@unique([namespaceId, classification, direction])
   @@index([userId])
+  @@index([namespaceId])
   @@map("classification_templates")
 }

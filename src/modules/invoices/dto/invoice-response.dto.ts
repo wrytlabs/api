@@ -8,7 +8,7 @@ export interface InvoiceItemDto {
 
 export class InvoiceResponseDto {
   id: string;
-  userId: string;
+  namespaceId: string | null;
   number: string;
   status: OutboundInvoiceStatus;
   recipientName: string;

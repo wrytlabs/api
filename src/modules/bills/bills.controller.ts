@@ -13,18 +13,20 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { ApiHeader, ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiParam, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { BillsService } from './bills.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { User } from '@prisma/client';
+import { NamespaceGuard } from '../../common/guards/namespace.guard';
+import { CurrentNamespace } from '../../common/decorators/current-namespace.decorator';
+import type { Namespace } from '@prisma/client';
 
 @ApiTags('Bills')
 @ApiSecurity('api-key')
-@UseGuards(ScopesGuard)
+@UseGuards(ScopesGuard, NamespaceGuard)
 @RequireScopes('USER')
 @Controller('bills')
+@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
 export class BillsController {
   constructor(private readonly service: BillsService) {}
 
@@ -43,25 +45,25 @@ export class BillsController {
   @ApiResponse({ status: 201, description: 'Bill created, extraction queued' })
   @UseInterceptors(FileInterceptor('file'))
   upload(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.upload(user.id, file);
+    return this.service.upload(namespace.id, file);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List own bills (latest 50)' })
+  @ApiOperation({ summary: 'List namespace bills (latest 50)' })
   @ApiResponse({ status: 200, description: 'Array of bills (no file data)' })
-  list(@CurrentUser() user: User) {
-    return this.service.list(user.id);
+  list(@CurrentNamespace() namespace: Namespace) {
+    return this.service.list(namespace.id);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single bill' })
   @ApiParam({ name: 'id', example: 'cm9bill001xyz' })
   @ApiResponse({ status: 404, description: 'Bill not found' })
-  get(@CurrentUser() user: User, @Param('id') id: string) {
-    return this.service.get(id, user.id);
+  get(@CurrentNamespace() namespace: Namespace, @Param('id') id: string) {
+    return this.service.get(id, namespace.id);
   }
 
   @Patch(':id')
@@ -80,11 +82,11 @@ export class BillsController {
     },
   })
   updateFields(
-    @CurrentUser() user: User,
+    @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
     @Body() body: { fromName?: string | null; amount?: string | null; currency?: string | null; itemTags?: string[] },
   ) {
-    return this.service.update(id, user.id, body);
+    return this.service.update(id, namespace.id, body);
   }
 
   @Patch(':id/mark-paid')

@@ -1,8 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Update, Start, Command, Ctx, InjectBot, Action } from 'nestjs-telegraf';
+import { Update, Start, Command, Ctx, InjectBot, Action, On } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { AuthService } from '../../modules/auth/auth.service';
 import { UserWalletsService } from '../../modules/user-wallets/user-wallets.service';
+import { NamespaceService } from '../../modules/namespace/namespace.service';
 import { TelegramService } from './telegram.service';
 
 @Update()
@@ -14,6 +15,7 @@ export class TelegramUpdate implements OnModuleInit {
     @InjectBot() private readonly bot: Telegraf,
     private readonly authService: AuthService,
     private readonly userWalletsService: UserWalletsService,
+    private readonly namespaceService: NamespaceService,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -22,6 +24,7 @@ export class TelegramUpdate implements OnModuleInit {
       await this.bot.telegram.setMyCommands([
         { command: 'start', description: 'Register and show available commands' },
         { command: 'me', description: 'Show your account info' },
+        { command: 'namespaces', description: 'List your namespaces' },
         { command: 'api_create', description: 'Generate a magic link to create an API key' },
         { command: 'link', description: 'Link a wallet — usage: /link <token>' },
         { command: 'wallets', description: 'List your linked wallets' },
@@ -47,6 +50,7 @@ export class TelegramUpdate implements OnModuleInit {
 
     const commandList =
       `/me — Show your account info\n` +
+      `/namespaces — List your namespaces\n` +
       `/api_create — Generate an API key\n` +
       `/link <token> — Link a wallet from the app\n` +
       `/wallets — List linked wallets`;
@@ -93,6 +97,46 @@ export class TelegramUpdate implements OnModuleInit {
         `Use /api_create to generate a new API key.\n` +
         `Use /link <token> to link a wallet from the app.`,
     );
+  }
+
+  // ── /namespaces ─────────────────────────────────────────────────────────────
+
+  @Command('namespaces')
+  async onNamespaces(@Ctx() ctx: Context) {
+    const from = ctx.from;
+    if (!from) return;
+
+    const user = await this.authService.findUserByTelegramId(BigInt(from.id));
+    if (!user) {
+      await ctx.reply('You are not registered. Send /start to create an account.');
+      return;
+    }
+
+    const namespaces = await this.namespaceService.list(user.id);
+
+    if (namespaces.length === 0) {
+      await ctx.reply(
+        'You have no namespaces yet.\n\n' +
+          'To create one, add me to a Telegram group. I will automatically create a namespace for that group.',
+      );
+      return;
+    }
+
+    const lines = namespaces.map((ns: any) => {
+      const role = ns.role as string;
+      const safeCount = ns.safeWallets?.length ?? 0;
+      const groupStatus = ns.telegramGroupId
+        ? `Group linked (ID: ${ns.telegramGroupId})`
+        : '⚠️ No group linked — add me to a TG group';
+      return (
+        `📦 *${ns.name}*\n` +
+        `  Role: ${role}\n` +
+        `  ${groupStatus}\n` +
+        `  Safe wallets: ${safeCount}`
+      );
+    });
+
+    await ctx.reply(`Your namespaces:\n\n${lines.join('\n\n')}`, { parse_mode: 'Markdown' });
   }
 
   // ── /api_create ─────────────────────────────────────────────────────────────
@@ -191,6 +235,84 @@ export class TelegramUpdate implements OnModuleInit {
       .join('\n');
 
     await ctx.reply(`Your linked wallets:\n\n${lines}`);
+  }
+
+  // ── Namespace group events ───────────────────────────────────────────────────
+
+  @On('my_chat_member')
+  async onMyChatMember(@Ctx() ctx: Context) {
+    const update = (ctx.update as any).my_chat_member;
+    if (!update) return;
+
+    const { chat, from, new_chat_member } = update;
+
+    // Only handle being added to a group/supergroup
+    if (chat.type !== 'group' && chat.type !== 'supergroup') return;
+    if (!['member', 'administrator'].includes(new_chat_member?.status)) return;
+
+    // Ensure the user who added the bot is registered
+    const ownerResult = await this.authService.findUserByTelegramId(BigInt(from.id))
+      ?? await this.authService.getOrCreateUser(BigInt(from.id), from.username).then(r => ({ id: r.id }));
+    const ownerUserId = (ownerResult as { id: string }).id;
+
+    // Check if a namespace already exists for this group
+    const existing = await this.namespaceService.getByTelegramGroupId(BigInt(chat.id));
+    if (existing) {
+      this.logger.log(`Bot added to known namespace group: ${chat.title}`);
+      return;
+    }
+
+    const namespace = await this.namespaceService.createFromTelegramGroup(
+      BigInt(chat.id),
+      chat.title ?? `Group ${chat.id}`,
+      ownerUserId,
+    );
+
+    this.logger.log(`Namespace created from group ${chat.title}: ${namespace.id}`);
+
+    try {
+      await ctx.telegram.sendMessage(
+        chat.id,
+        `✅ *Namespace "${namespace.name}" created!*\n\nThis group is now linked to a Wrytes namespace.\n\nUse the Wrytes app to set up a Safe wallet for this namespace.`,
+        { parse_mode: 'Markdown' },
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to send namespace created message: ${err.message}`);
+    }
+  }
+
+  @On('chat_member')
+  async onChatMember(@Ctx() ctx: Context) {
+    const update = (ctx.update as any).chat_member;
+    if (!update) return;
+
+    const { chat, new_chat_member } = update;
+
+    // Only handle members being added (not removed)
+    if (!['member', 'administrator'].includes(new_chat_member?.status)) return;
+
+    const namespace = await this.namespaceService.getByTelegramGroupId(BigInt(chat.id));
+    if (!namespace) return;
+
+    const newMemberTgId = new_chat_member.user?.id;
+    if (!newMemberTgId || new_chat_member.user?.is_bot) return;
+
+    const newUser = await this.authService.findUserByTelegramId(BigInt(newMemberTgId));
+    if (!newUser) return; // User hasn't /start'd the bot yet — will join when they do
+
+    const alreadyMember = await this.namespaceService.isMember(namespace.id, newUser.id);
+    if (alreadyMember) return;
+
+    // Find the namespace OWNER to act as actor for addMember
+    const ownerMember = namespace.members.find((m: any) => m.role === 'OWNER');
+    if (!ownerMember) return;
+
+    try {
+      await this.namespaceService.addMember(namespace.id, ownerMember.userId, newUser.id);
+      this.logger.log(`Auto-added user ${newUser.id} to namespace ${namespace.id}`);
+    } catch (err) {
+      this.logger.warn(`Failed to auto-add member to namespace: ${err.message}`);
+    }
   }
 
   // ── Wallet 2FA callbacks ────────────────────────────────────────────────────

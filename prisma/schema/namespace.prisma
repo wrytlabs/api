@@ -1,0 +1,36 @@
+model Namespace {
+  id              String   @id @default(cuid())
+  name            String
+  telegramGroupId BigInt?  @unique // null for legacy/migrated namespaces; set when bot joins a TG group
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members                 NamespaceMember[]
+  safeWallets             SafeWallet[]
+  offRampRoutes           OffRampRoute[]
+  bankAccounts            BankAccount[]
+  invoices                Invoice[]
+  outboundInvoices        OutboundInvoice[]
+  accountingAddresses     AccountingAddress[]
+  accountingAccounts      AccountingAccount[]
+  classificationTemplates ClassificationTemplate[]
+  counterpartyLabels      AccountingCounterpartyLabel[]
+}
+
+model NamespaceMember {
+  namespaceId String
+  userId      String
+  role        NamespaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+
+  namespace Namespace @relation(fields: [namespaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([namespaceId, userId])
+  @@index([userId])
+}
+
+enum NamespaceRole {
+  OWNER
+  MEMBER
+}

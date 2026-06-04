@@ -137,7 +137,7 @@ export class OffRampProcessor extends WorkerHost {
 				data: { status: 'FAILED', error },
 			});
 			this.notifyUser(
-				execution.userId,
+				execution.namespaceId ?? execution.userId,
 				'Off-ramp failed',
 				`Your off-ramp could not be completed: ${error}`,
 				'error',
@@ -155,7 +155,7 @@ export class OffRampProcessor extends WorkerHost {
 	// ---------------------------------------------------------------------------
 	private async handleDetected(execution: any) {
 		this.notifyUser(
-			execution.userId,
+			execution.namespaceId ?? execution.userId,
 			'Received',
 			`${execution.depositTokenAmount} ${execution.depositTokenSymbol} received.`,
 		);
@@ -229,7 +229,7 @@ export class OffRampProcessor extends WorkerHost {
 			);
 
 			await this.safe.ensureDeployed(
-				execution.userId,
+				execution.namespaceId ?? execution.userId,
 				chainId,
 				safeWallet.label,
 			);
@@ -264,7 +264,7 @@ export class OffRampProcessor extends WorkerHost {
 				`Conversion complete: ${execution.depositTokenSymbol} → ${result.tokenSymbol} (${outputAmount}) tx: ${result.txHash}`,
 			);
 			this.notifyUser(
-				execution.userId,
+				execution.namespaceId ?? execution.userId,
 				'Converted',
 				`${execution.depositTokenAmount} ${execution.depositTokenSymbol} → ${outputAmount} ${result.tokenSymbol}`,
 			);
@@ -330,7 +330,7 @@ export class OffRampProcessor extends WorkerHost {
 
 			// ensureDeployed is a no-op when already deployed; skipped when conversion already ran it
 			await this.safe.ensureDeployed(
-				execution.userId,
+				execution.namespaceId ?? execution.userId,
 				safeWallet.chainId,
 				safeWallet.label,
 			);
@@ -434,7 +434,7 @@ export class OffRampProcessor extends WorkerHost {
 		});
 
 		this.notifyUser(
-			execution.userId,
+			execution.namespaceId ?? execution.userId,
 			'Arrived at exchange',
 			`${execution.depositTokenAmount} ${execution.depositTokenSymbol} confirmed on Kraken — swapping to fiat.`,
 		);
@@ -491,7 +491,7 @@ export class OffRampProcessor extends WorkerHost {
 		});
 
 		this.notifyUser(
-			execution.userId,
+			execution.namespaceId ?? execution.userId,
 			'Swapped to fiat',
 			`${execution.depositTokenAmount} ${execution.depositTokenSymbol} → ${krakenFiatAmount} ${route.targetCurrency} — initiating bank withdrawal.`,
 		);
@@ -602,7 +602,7 @@ export class OffRampProcessor extends WorkerHost {
 		});
 
 		this.notifyUser(
-			execution.userId,
+			execution.namespaceId ?? execution.userId,
 			'Payment pending',
 			`${match.amount} ${currency} (fee: ${match.fee} ${currency}) is being transferred to your bank account.`,
 		);
@@ -703,14 +703,15 @@ export class OffRampProcessor extends WorkerHost {
 	}
 
 	private notifyUser(
-		userId: string,
+		namespaceId: string | null | undefined,
 		title: string,
 		message: string,
 		level: 'info' | 'success' | 'warning' | 'error' = 'info',
 	) {
+		if (!namespaceId) return;
 		this.eventEmitter.emit(
 			'notification',
-			new NotificationEvent(userId, title, message, level),
+			new NotificationEvent(namespaceId, title, message, level),
 		);
 	}
 

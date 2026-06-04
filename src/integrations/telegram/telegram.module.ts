@@ -6,6 +6,7 @@ import { TelegramUpdate } from './telegram.update';
 import { TelegramController } from './telegram.controller';
 import { AuthModule } from '../../modules/auth/auth.module';
 import { UserWalletsModule } from '../../modules/user-wallets/user-wallets.module';
+import { NamespaceModule } from '../../modules/namespace/namespace.module';
 import { session } from 'telegraf';
 import { Redis } from 'ioredis';
 
@@ -70,6 +71,7 @@ function createIoRedisStore<T>(client: Redis, ttlSeconds: number) {
     }),
     AuthModule,
     UserWalletsModule,
+    NamespaceModule,
   ],
   controllers: [TelegramController],
   providers: [TelegramService, TelegramUpdate],

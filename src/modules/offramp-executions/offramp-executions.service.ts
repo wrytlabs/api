@@ -29,7 +29,8 @@ export class OffRampExecutionsService {
   // Internal: create execution record
   async create(data: {
     routeId: string;
-    userId: string;
+    userId?: string;
+    namespaceId?: string;
     depositTokenSymbol: string;
     depositTokenAmount: string;
     depositTxHash: string;
