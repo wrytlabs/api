@@ -123,6 +123,17 @@ export class OffRampExecutionsController {
     return this.service.get(id, user.id);
   }
 
+  @Patch(':id/requeue')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('ADMIN')
+  @ApiOperation({ summary: 'Reset a FAILED execution to DETECTED and re-enqueue it (admin only)' })
+  @ApiParam({ name: 'id', example: 'cm9exe001xyz' })
+  @ApiResponse({ status: 400, description: 'Execution is not in FAILED status' })
+  @ApiResponse({ status: 404, description: 'Execution not found' })
+  requeue(@Param('id') id: string) {
+    return this.service.requeue(id);
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('ADMIN')

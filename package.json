@@ -41,7 +41,9 @@
 		"db:grant-admin": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only prisma/scripts/grant-admin.ts",
 		"db:list-users": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only prisma/scripts/list-users.ts",
 		"db:remove-user": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only prisma/scripts/remove-user.ts",
-		"script:deploy-safe": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only scripts/deploy-safe.ts"
+		"script:deploy-safe": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only scripts/deploy-safe.ts",
+		"script:morpho-market": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only scripts/morpho-market.ts",
+		"script:morpho-scan-base": "ts-node --skip-project --compiler-options '{\"module\":\"commonjs\",\"moduleResolution\":\"node\",\"esModuleInterop\":true}' --transpile-only scripts/morpho-scan-base.ts"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.39.0",

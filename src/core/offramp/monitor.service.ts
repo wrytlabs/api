@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHmac } from 'crypto';
+import { formatUnits } from 'viem';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../database/prisma.service';
 import { AlchemyService } from '../../integrations/alchemy/alchemy.service';
@@ -108,7 +109,12 @@ export class MonitorService implements OnModuleInit {
 			});
 			const minTriggerAmount = minRecord ? minRecord.minAmount : new Decimal(0);
 
-			const amount = transfer.value ?? 0;
+			// Use raw hex value for lossless precision; float `value` loses wei-level digits
+			const rawHex = transfer.rawContract.value;
+			const amount = rawHex
+				? formatUnits(BigInt(rawHex), token.decimals)
+				: (transfer.value ?? 0).toString();
+
 			if (new Decimal(amount).lt(minTriggerAmount)) {
 				this.logger.debug(
 					`Transfer ${transfer.hash}: amount ${amount} below threshold ${minTriggerAmount} for ${token.symbol} — skipping`,
@@ -120,7 +126,7 @@ export class MonitorService implements OnModuleInit {
 				txHash: transfer.hash,
 				routeId,
 				tokenSymbol: token.symbol,
-				tokenAmount: amount.toString(),
+				tokenAmount: amount,
 			});
 		}
 	}
@@ -229,7 +235,12 @@ export class MonitorController {
 			if (!route) continue;
 
 			const token = activity.asset as string;
-			const amount = (activity.value ?? 0).toString();
+			const rawHex = activity.rawContract?.rawValue;
+			const decimals: number | undefined = activity.rawContract?.decimals;
+			const amount =
+				rawHex != null && decimals != null
+					? formatUnits(BigInt(rawHex), decimals)
+					: (activity.value ?? 0).toString();
 
 			await this.monitor.processTransfer({
 				txHash: activity.hash,
