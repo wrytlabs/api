@@ -39,7 +39,7 @@ export class NamespaceGuard implements CanActivate {
 		});
 		if (!member) throw new ForbiddenException('Not a member of this namespace');
 
-		request.namespace = namespace;
+		request.namespace = { ...namespace, telegramGroupId: namespace.telegramGroupId?.toString() ?? null };
 		request.namespaceMember = member;
 		return true;
 	}

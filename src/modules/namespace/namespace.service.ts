@@ -6,6 +6,11 @@ import {
 import { NamespaceRole } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service';
 
+// BigInt telegramGroupId cannot be JSON-serialised by default — convert to string.
+function serializeNamespace<T extends { telegramGroupId: bigint | null }>(ns: T) {
+	return { ...ns, telegramGroupId: ns.telegramGroupId?.toString() ?? null }
+}
+
 @Injectable()
 export class NamespaceService {
 	constructor(private readonly prisma: PrismaService) {}
@@ -22,26 +27,28 @@ export class NamespaceService {
 				},
 			},
 		});
-		return memberships.map((m) => ({ ...m.namespace, role: m.role }));
+		return memberships.map((m) => ({ ...serializeNamespace(m.namespace), role: m.role }));
 	}
 
 	async get(namespaceId: string, userId: string) {
 		await this.assertMember(namespaceId, userId);
-		return this.prisma.namespace.findUniqueOrThrow({
+		const ns = await this.prisma.namespace.findUniqueOrThrow({
 			where: { id: namespaceId },
 			include: {
 				members: { include: { user: { select: { id: true, telegramHandle: true } } } },
 				safeWallets: { select: { id: true, address: true, chainId: true, label: true, deployed: true } },
 			},
 		});
+		return serializeNamespace(ns);
 	}
 
 	async update(namespaceId: string, userId: string, name: string) {
 		await this.assertOwner(namespaceId, userId);
-		return this.prisma.namespace.update({
+		const ns = await this.prisma.namespace.update({
 			where: { id: namespaceId },
 			data: { name },
 		});
+		return serializeNamespace(ns);
 	}
 
 	async addMember(
@@ -84,16 +91,17 @@ export class NamespaceService {
 			await tx.namespaceMember.create({
 				data: { namespaceId: namespace.id, userId: ownerUserId, role: NamespaceRole.OWNER },
 			});
-			return namespace;
+			return serializeNamespace(namespace);
 		});
 	}
 
 	async linkTelegramGroup(namespaceId: string, userId: string, telegramGroupId: bigint) {
 		await this.assertOwner(namespaceId, userId);
-		return this.prisma.namespace.update({
+		const ns = await this.prisma.namespace.update({
 			where: { id: namespaceId },
 			data: { telegramGroupId },
 		});
+		return serializeNamespace(ns);
 	}
 
 	async isMember(namespaceId: string, userId: string): Promise<boolean> {
