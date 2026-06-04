@@ -42,6 +42,18 @@ services:
                 condition: on-failure
                 delay: 5s
 
+    adminer:
+        image: adminer
+        networks:
+            - backend
+        ports:
+            - '8080:8080'
+        deploy:
+            replicas: 1
+            restart_policy:
+                condition: on-failure
+                delay: 5s
+
     # nestjs:
     #     image: node:22
     #     working_dir: /app
