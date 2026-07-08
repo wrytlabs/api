@@ -113,6 +113,33 @@ export class NamespaceController {
 		return { message: 'Member removed' };
 	}
 
+	// ── Safe Wallets ────────────────────────────────────────────────────────────
+
+	@Get(':id/safe/members')
+	@UseGuards(NamespaceGuard)
+	@ApiOperation({ summary: 'List linked wallet addresses for all namespace members' })
+	@ApiParam({ name: 'id', description: 'Namespace ID' })
+	@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
+	async getSafeMembers(@CurrentNamespace() namespace: Namespace) {
+		const members = await this.safeService.getMemberWalletAddresses(namespace.id);
+		return { members };
+	}
+
+	@Get(':id/safe/preview')
+	@UseGuards(NamespaceGuard)
+	@ApiOperation({ summary: 'Fetch owners and threshold of an existing Safe from the chain' })
+	@ApiParam({ name: 'id', description: 'Namespace ID' })
+	@ApiQuery({ name: 'address', required: true, type: String })
+	@ApiQuery({ name: 'chainId', required: false, type: Number, example: 1 })
+	@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
+	async previewSafe(
+		@Query('address') address: string,
+		@Query('chainId') chainIdParam = '1',
+	) {
+		const chainId = Number(chainIdParam) as ChainId;
+		return this.safeService.getOwners(address, chainId);
+	}
+
 	@Get(':id/safe')
 	@UseGuards(NamespaceGuard)
 	@ApiOperation({ summary: 'List Safe wallets for the namespace' })
@@ -131,7 +158,7 @@ export class NamespaceController {
 	@Post(':id/safe')
 	@UseGuards(NamespaceGuard)
 	@HttpCode(HttpStatus.OK)
-	@ApiOperation({ summary: 'Get or create a Safe wallet for the namespace' })
+	@ApiOperation({ summary: 'Predict or get a Safe wallet for the namespace' })
 	@ApiParam({ name: 'id', description: 'Namespace ID' })
 	@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
 	@ApiBody({
@@ -141,6 +168,7 @@ export class NamespaceController {
 			properties: {
 				chainId: { type: 'number', example: 1 },
 				label: { type: 'string', example: 'primary' },
+				owners: { type: 'array', items: { type: 'string' }, description: 'Owner addresses; operator wallet always added' },
 			},
 		},
 	})
@@ -148,8 +176,36 @@ export class NamespaceController {
 		@CurrentNamespace() namespace: Namespace,
 		@Body('chainId') chainId: ChainId,
 		@Body('label') label = 'primary',
+		@Body('owners') owners: string[] = [],
 	) {
-		const wallet = await this.safeService.getOrCreate(namespace.id, chainId, label);
+		const wallet = await this.safeService.getOrCreate(namespace.id, chainId, label, owners);
+		return { wallet };
+	}
+
+	@Post(':id/safe/link')
+	@UseGuards(NamespaceGuard)
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({ summary: 'Link an existing deployed Safe to this namespace' })
+	@ApiParam({ name: 'id', description: 'Namespace ID' })
+	@ApiHeader({ name: 'X-Namespace-Id', description: 'Namespace ID', required: true })
+	@ApiBody({
+		schema: {
+			type: 'object',
+			required: ['address', 'chainId'],
+			properties: {
+				address: { type: 'string', example: '0x...' },
+				chainId: { type: 'number', example: 1 },
+				label: { type: 'string', example: 'primary' },
+			},
+		},
+	})
+	async linkExistingSafe(
+		@CurrentNamespace() namespace: Namespace,
+		@Body('address') address: string,
+		@Body('chainId') chainId: ChainId,
+		@Body('label') label = 'primary',
+	) {
+		const wallet = await this.safeService.linkExisting(namespace.id, address, chainId, label);
 		return { wallet };
 	}
 }

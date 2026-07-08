@@ -6,6 +6,7 @@ model SafeWallet {
   chainId     Int
   label       String    @default("primary")
   saltNonce   String
+  owners      String[]  @default([])
   deployed    Boolean   @default(false)
   deployedAt  DateTime?
   createdAt   DateTime  @default(now())

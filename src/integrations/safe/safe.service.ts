@@ -1,8 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Safe from '@safe-global/protocol-kit';
-import { encodeFunctionData, erc20Abi, keccak256, toHex } from 'viem';
+import { encodeFunctionData, erc20Abi, getAddress, keccak256, toHex } from 'viem';
 import type { Address } from 'viem';
 import { PrismaService } from '../../core/database/prisma.service';
 import { AdminNotificationEvent } from '../../common/events/notification.events';
@@ -11,6 +11,12 @@ import { WalletViemService } from '../wallet/wallet.viem.service';
 import { ChainId, ALCHEMY_CHAIN_SLUGS } from '../wallet/wallet.types';
 
 const L1_CHAIN_IDS: ChainId[] = [1];
+
+export interface MemberWalletInfo {
+	userId: string;
+	telegramHandle: string | null;
+	wallets: string[];
+}
 
 @Injectable()
 export class SafeService {
@@ -40,7 +46,7 @@ export class SafeService {
 		return Safe.init({ provider: this.rpcUrl(chainId), signer: privateKey, safeAddress });
 	}
 
-	private async initSdk(saltNonce: string, chainId: ChainId): Promise<Safe> {
+	private async initSdk(saltNonce: string, chainId: ChainId, owners: string[]): Promise<Safe> {
 		const privateKey = process.env.WALLET_PRIVATE_KEY;
 		if (!privateKey) throw new Error('WALLET_PRIVATE_KEY is required');
 
@@ -50,7 +56,7 @@ export class SafeService {
 			isL1SafeSingleton: L1_CHAIN_IDS.includes(chainId),
 			predictedSafe: {
 				safeAccountConfig: {
-					owners: [this.wallet.requireAccount().address],
+					owners,
 					threshold: 1,
 				},
 				safeDeploymentConfig: {
@@ -61,20 +67,28 @@ export class SafeService {
 		});
 	}
 
-	async getOrCreate(namespaceId: string, chainId: ChainId, label = 'primary') {
+	/**
+	 * Predict or retrieve a Safe for a namespace.
+	 * memberOwners: wallet addresses to add as owners alongside the operator wallet.
+	 * Operator wallet is always included so the platform can relay transactions.
+	 */
+	async getOrCreate(namespaceId: string, chainId: ChainId, label = 'primary', memberOwners: string[] = []) {
 		const existing = await this.prisma.safeWallet.findUnique({
 			where: { namespaceId_chainId_label: { namespaceId, chainId, label } },
 		});
 		if (existing) return existing;
 
+		const operatorAddress = this.wallet.requireAccount().address;
+		const allOwners = Array.from(new Set([...memberOwners, operatorAddress]));
+
 		const saltNonce = this.deriveSaltNonce(namespaceId, chainId, label);
-		const sdk = await this.initSdk(saltNonce, chainId);
+		const sdk = await this.initSdk(saltNonce, chainId, allOwners);
 		const address = await sdk.getAddress();
 
-		this.logger.log(`Predicted Safe for namespace ${namespaceId} on chain ${chainId} [${label}]: ${address}`);
+		this.logger.log(`Predicted Safe for namespace ${namespaceId} on chain ${chainId} [${label}]: ${address} (owners: ${allOwners.length})`);
 
 		return this.prisma.safeWallet.create({
-			data: { namespaceId, chainId, label, address, saltNonce },
+			data: { namespaceId, chainId, label, address, saltNonce, owners: allOwners },
 		});
 	}
 
@@ -89,7 +103,12 @@ export class SafeService {
 		const safeWallet = await this.getOrCreate(namespaceId, chainId, label);
 		if (safeWallet.deployed) return;
 
-		const sdk = await this.initSdk(safeWallet.saltNonce, chainId);
+		// Fall back to operator-only for Safes created before the owners column was added
+		const owners = safeWallet.owners.length > 0
+			? safeWallet.owners
+			: [this.wallet.requireAccount().address];
+
+		const sdk = await this.initSdk(safeWallet.saltNonce, chainId, owners);
 		const isDeployed = await sdk.isSafeDeployed();
 
 		if (isDeployed) {
@@ -130,6 +149,65 @@ export class SafeService {
 				'success',
 			),
 		);
+	}
+
+	/** Returns linked wallet addresses for all members of a namespace, grouped by member. */
+	async getMemberWalletAddresses(namespaceId: string): Promise<MemberWalletInfo[]> {
+		const members = await this.prisma.namespaceMember.findMany({
+			where: { namespaceId },
+			include: {
+				user: {
+					select: {
+						id: true,
+						telegramHandle: true,
+						userWallets: {
+							where: { isActive: true },
+							select: { address: true },
+						},
+					},
+				},
+			},
+		});
+		return members.map(m => ({
+			userId: m.userId,
+			telegramHandle: m.user.telegramHandle ?? null,
+			wallets: m.user.userWallets.map(w => w.address),
+		}));
+	}
+
+	/** Fetches the owners and threshold of a deployed Safe from the chain. */
+	async getOwners(address: string, chainId: ChainId): Promise<{ owners: string[]; threshold: number }> {
+		const checksummed = getAddress(address);
+		const sdk = await this.initSdkForAddress(checksummed, chainId);
+		const [owners, threshold] = await Promise.all([sdk.getOwners(), sdk.getThreshold()]);
+		return { owners, threshold };
+	}
+
+	/** Links an already-deployed external Safe to a namespace. */
+	async linkExisting(namespaceId: string, address: string, chainId: ChainId, label: string) {
+		const checksummed = getAddress(address);
+
+		const sdk = await this.initSdkForAddress(checksummed, chainId);
+		const isDeployed = await sdk.isSafeDeployed();
+		if (!isDeployed) throw new BadRequestException('Address is not a deployed Safe');
+
+		try {
+			return await this.prisma.safeWallet.create({
+				data: {
+					namespaceId,
+					address: checksummed,
+					chainId,
+					label,
+					saltNonce: 'external',
+					deployed: true,
+					deployedAt: new Date(),
+				},
+			});
+		} catch (err: unknown) {
+			const code = (err as { code?: string }).code;
+			if (code === 'P2002') throw new ConflictException(`A Safe with label "${label}" already exists for this namespace on this chain`);
+			throw err;
+		}
 	}
 
 	/**
