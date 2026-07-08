@@ -82,6 +82,7 @@ model AccountingTransfer {
   classification      TransferClassification @default(UNCLASSIFIED)
   isHidden            Boolean                @default(false)
   chfValue            String?
+  chfValueIsEstimate  Boolean                @default(false) // true = derived from a DailyRate close, not confirmed
   notes               String?
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt

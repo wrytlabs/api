@@ -105,6 +105,35 @@ export const PEG_CONFIG: PegEntry[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Daily-rate reference asset map — groups tokens by the underlying asset whose
+// CHF daily close rate should be used to auto-estimate accounting chfValue.
+// Independent of ENABLED_TOKENS/PEG_CONFIG (which are about swap routing and
+// live spot pricing): this only needs to know "what one daily series does this
+// symbol need", including tokens with no swap route configured (e.g. USDU).
+// ---------------------------------------------------------------------------
+
+export const CHF_RATE_BASE_MAP: Record<string, string> = {
+  ZCHF: 'CHF',
+  USDC: 'USD',
+  USDT: 'USD',
+  USDU: 'USD',
+  EURC: 'EUR',
+  WBTC: 'BTC',
+  CBBTC: 'BTC',
+  BTC: 'BTC',
+  WETH: 'ETH',
+  ETH: 'ETH',
+};
+
+/** Resolves a token symbol to the reference asset ('CHF'|'USD'|'EUR'|'BTC'|'ETH') whose
+ *  daily CHF close rate should be used to estimate its value, or null if unknown
+ *  (e.g. governance/pool-share tokens with no natural fiat/crypto peg). */
+export function resolveChfRateBase(tokenSymbol: string | null | undefined): string | null {
+  if (!tokenSymbol) return null;
+  return CHF_RATE_BASE_MAP[tokenSymbol.toUpperCase()] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

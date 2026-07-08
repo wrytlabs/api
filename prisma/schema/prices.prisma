@@ -25,6 +25,20 @@ model PriceCache {
   updatedAt DateTime @updatedAt
 }
 
+/// Daily closing exchange rate to CHF for a reference asset (fiat or crypto).
+/// Used to auto-estimate `AccountingTransfer.chfValue` when no manual value has
+/// been entered. CHF itself is never stored — its rate is always 1.
+model DailyRate {
+  date      DateTime // UTC midnight — one row per (date, base)
+  base      String   // 'USD' | 'EUR' | 'BTC' | 'ETH'
+  chfClose  Float
+  source    String   // 'frankfurter' | 'kraken'
+  updatedAt DateTime @updatedAt
+
+  @@id([date, base])
+  @@map("daily_rates")
+}
+
 model AlchemyCache {
   id          String   @id @default(cuid())
   requestType String

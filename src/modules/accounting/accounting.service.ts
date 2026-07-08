@@ -7,6 +7,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../core/database/prisma.service';
 import { AlchemyService } from '../../integrations/alchemy/alchemy.service';
+import { DailyRateService } from '../../integrations/prices/daily-rate.service';
+import { resolveChfRateBase } from '../../config/tokens.config';
 
 const CHAIN_ID_MAP: Record<string, number> = {
   'eth-mainnet':     1,
@@ -62,7 +64,27 @@ export class AccountingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly alchemy: AlchemyService,
+    private readonly dailyRates: DailyRateService,
   ) {}
+
+  /** Estimates chfValue for a token amount from its daily reference-asset close rate. */
+  private async estimateChfValue(
+    tokenSymbol: string | null,
+    amountFormatted: string | null,
+    timestamp: Date | null,
+  ): Promise<{ chfValue?: string; chfValueIsEstimate: boolean }> {
+    const base = resolveChfRateBase(tokenSymbol);
+    if (!base || !amountFormatted || !timestamp) return { chfValueIsEstimate: false };
+
+    const rate = await this.dailyRates.getRate(base, timestamp);
+    if (rate === null) return { chfValueIsEstimate: false };
+
+    return {
+      chfValue: String(parseFloat(amountFormatted) * rate),
+      // The ZCHF/CHF peg is definitional, not a market-derived estimate.
+      chfValueIsEstimate: base !== 'CHF',
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Addresses
@@ -121,7 +143,7 @@ export class AccountingService {
     });
 
     const addr = acct.address.toLowerCase();
-    const rows = unique.map(t => {
+    const rows = await Promise.all(unique.map(async t => {
       const tokenAddr = t.rawContract.address?.toLowerCase() ?? null;
       const decimalsHex = t.rawContract.decimal;
       const tokenDecimals = decimalsHex
@@ -132,7 +154,8 @@ export class AccountingService {
 
       const symbol = t.asset ?? null;
       const amountFormatted = t.value !== null && t.value !== undefined ? String(t.value) : null;
-      const isZchf = symbol?.toUpperCase() === 'ZCHF';
+      const timestamp = t.metadata?.blockTimestamp ? new Date(t.metadata.blockTimestamp) : null;
+      const { chfValue, chfValueIsEstimate } = await this.estimateChfValue(symbol, amountFormatted, timestamp);
 
       return {
         accountingAddressId: acct.id,
@@ -142,7 +165,7 @@ export class AccountingService {
         blockNum: t.blockNum,
         blockNumber,
         logIndex,
-        timestamp: t.metadata?.blockTimestamp ? new Date(t.metadata.blockTimestamp) : null,
+        timestamp,
         direction: t.to?.toLowerCase() === addr ? 'IN' : 'OUT',
         tokenAddress: tokenAddr,
         tokenSymbol: symbol,
@@ -153,9 +176,10 @@ export class AccountingService {
         fromAddress: t.from.toLowerCase(),
         toAddress: t.to?.toLowerCase() ?? null,
         isHidden: tokenAddr ? blacklisted.has(tokenAddr) : false,
-        chfValue: isZchf ? amountFormatted : undefined,
+        chfValue,
+        chfValueIsEstimate,
       };
-    });
+    }));
 
     const result = await this.prisma.accountingTransfer.createMany({
       data: rows,
@@ -182,18 +206,31 @@ export class AccountingService {
       this.logger.log(`Backfilled block/log indices for ${updates.length} transfers`);
     }
 
-    // Backfill chfValue for existing ZCHF transfers that are missing it
-    const zchfMissingChf = await this.prisma.accountingTransfer.findMany({
-      where: { accountingAddressId: acct.id, tokenSymbol: { equals: 'ZCHF', mode: 'insensitive' }, chfValue: null },
-      select: { id: true, amountFormatted: true },
+    // Backfill chfValue for existing transfers still missing it (e.g. synced before
+    // this token's reference asset had daily rate coverage, or before this feature existed)
+    const missingChf = await this.prisma.accountingTransfer.findMany({
+      where: { accountingAddressId: acct.id, chfValue: null, tokenSymbol: { not: null } },
+      select: { id: true, tokenSymbol: true, amountFormatted: true, timestamp: true },
     });
-    if (zchfMissingChf.length > 0) {
-      await this.prisma.$transaction(
-        zchfMissingChf
-          .filter(t => t.amountFormatted !== null)
-          .map(t => this.prisma.accountingTransfer.update({ where: { id: t.id }, data: { chfValue: t.amountFormatted } })),
+    if (missingChf.length > 0) {
+      const estimates = await Promise.all(
+        missingChf.map(async t => ({
+          id: t.id,
+          ...(await this.estimateChfValue(t.tokenSymbol, t.amountFormatted, t.timestamp)),
+        })),
       );
-      this.logger.log(`Backfilled CHF value for ${zchfMissingChf.length} ZCHF transfers`);
+      const updates = estimates
+        .filter(e => e.chfValue !== undefined)
+        .map(e =>
+          this.prisma.accountingTransfer.update({
+            where: { id: e.id },
+            data: { chfValue: e.chfValue, chfValueIsEstimate: e.chfValueIsEstimate },
+          }),
+        );
+      if (updates.length > 0) {
+        await this.prisma.$transaction(updates);
+        this.logger.log(`Backfilled CHF estimate for ${updates.length} transfers`);
+      }
     }
 
     await this.prisma.accountingAddress.update({
@@ -282,7 +319,20 @@ export class AccountingService {
       throw new NotFoundException('Transfer not found');
     }
 
-    const updated = await this.prisma.accountingTransfer.update({ where: { id: transferId }, data });
+    const patch: typeof data & { chfValueIsEstimate?: boolean } = { ...data };
+    if (data.chfValue !== undefined) {
+      if (data.chfValue === null) {
+        // Cleared by the user — fall back to the daily-rate estimate rather than leaving it blank
+        const estimate = await this.estimateChfValue(transfer.tokenSymbol, transfer.amountFormatted, transfer.timestamp);
+        patch.chfValue = estimate.chfValue ?? null;
+        patch.chfValueIsEstimate = estimate.chfValueIsEstimate;
+      } else {
+        // Explicitly entered/edited — this is now a confirmed value, not an estimate
+        patch.chfValueIsEstimate = false;
+      }
+    }
+
+    const updated = await this.prisma.accountingTransfer.update({ where: { id: transferId }, data: patch });
 
     // Keep journal entry in sync whenever classification or chfValue changes
     const newClassification = data.classification ?? transfer.classification;

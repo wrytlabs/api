@@ -3,6 +3,7 @@ import {
 	Get,
 	Param,
 	Query,
+	BadRequestException,
 	NotFoundException,
 	UseGuards,
 } from '@nestjs/common';
@@ -15,8 +16,11 @@ import {
 	ApiTags,
 } from '@nestjs/swagger';
 import { PricesService } from './prices.service';
+import { DailyRateService } from './daily-rate.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
+
+const DAILY_RATE_BASES = ['USD', 'EUR', 'BTC', 'ETH', 'CHF'];
 
 @ApiTags('Prices')
 @Controller('prices')
@@ -24,7 +28,10 @@ import { RequireScopes } from '../../common/decorators/require-scopes.decorator'
 @ApiSecurity('api-key')
 @RequireScopes('USER')
 export class PricesController {
-	constructor(private readonly prices: PricesService) {}
+	constructor(
+		private readonly prices: PricesService,
+		private readonly dailyRates: DailyRateService,
+	) {}
 
 	@Get()
 	@ApiOperation({ summary: 'Current prices for all tracked tokens' })
@@ -100,6 +107,35 @@ export class PricesController {
 	})
 	routes(@Query('from') from: string, @Query('to') to: string) {
 		return this.prices.findRoutes(from, to);
+	}
+
+	@Get('daily')
+	@ApiOperation({ summary: 'Daily CHF close rates for a reference asset (USD/EUR/BTC/ETH/CHF), from 2025 onward' })
+	@ApiQuery({ name: 'base', required: true, example: 'USD' })
+	@ApiQuery({ name: 'date', required: false, example: '2026-01-15', description: 'Return the closest close on/before this date instead of the full series' })
+	@ApiResponse({
+		status: 200,
+		schema: {
+			example: [
+				{ date: '2025-01-01T00:00:00.000Z', chfClose: 0.906, source: 'frankfurter' },
+				{ date: '2025-01-02T00:00:00.000Z', chfClose: 0.905, source: 'frankfurter' },
+			],
+		},
+	})
+	@ApiResponse({ status: 404, description: 'No daily rate found on/before the given date' })
+	async daily(@Query('base') base: string, @Query('date') date?: string) {
+		const b = base?.toUpperCase();
+		if (!b || !DAILY_RATE_BASES.includes(b)) {
+			throw new BadRequestException(`base must be one of: ${DAILY_RATE_BASES.join(', ')}`);
+		}
+
+		if (date) {
+			const row = await this.dailyRates.getRateRow(b, new Date(date));
+			if (!row) throw new NotFoundException(`No daily rate for ${b} on/before ${date}`);
+			return row;
+		}
+
+		return this.dailyRates.listRates(b);
 	}
 
 	@Get(':symbol')
