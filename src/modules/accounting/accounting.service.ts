@@ -48,13 +48,11 @@ const DEFAULT_ACCOUNTS = [
 // Direction "ANY" matches both IN and OUT when no direction-specific template exists.
 const DEFAULT_TEMPLATES: Record<string, { debit: string; credit: string }> = {
   [`${TransferClassification.ASSET}:ANY`]:     { debit: 'Crypto Assets', credit: 'Income'          },
-  [`${TransferClassification.RECEIVED}:ANY`]:  { debit: 'Crypto Assets', credit: 'Income'          },
+  [`${TransferClassification.RECEIVED}:ANY`]:  { debit: 'Crypto Assets', credit: 'Internal Transfers' },
   [`${TransferClassification.SWAP_IN}:ANY`]:   { debit: 'Crypto Assets', credit: 'Swap Proceeds'   },
   [`${TransferClassification.LIABILITY}:ANY`]: { debit: 'Crypto Assets', credit: 'Loans Payable'   },
-  [`${TransferClassification.PAYMENT}:ANY`]:   { debit: 'Expenses',      credit: 'Crypto Assets'   },
+  [`${TransferClassification.PAYMENT}:ANY`]:   { debit: 'Internal Transfers', credit: 'Crypto Assets' },
   [`${TransferClassification.SWAP_OUT}:ANY`]:  { debit: 'Swap Cost',     credit: 'Crypto Assets'   },
-  [`${TransferClassification.TRANSFER}:IN`]:   { debit: 'Crypto Assets', credit: 'Internal Transfers' },
-  [`${TransferClassification.TRANSFER}:OUT`]:  { debit: 'Internal Transfers', credit: 'Crypto Assets'  },
 };
 
 @Injectable()
@@ -726,7 +724,6 @@ export class AccountingService {
     const NO_EFFECT = new Set<TransferClassification>([
       TransferClassification.NEUTRAL,
       TransferClassification.SKIPPED,
-      TransferClassification.TRANSFER,
     ]);
 
     type TokenEntry = {

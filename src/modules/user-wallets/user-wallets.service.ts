@@ -25,7 +25,7 @@ export class UserWalletsService {
   private readonly LINK_TOKEN_EXPIRY_MINUTES = 15;
   private readonly CHALLENGE_EXPIRY_MINUTES = 10;
   private readonly SESSION_EXPIRY_MINUTES = 5;
-  private readonly JWT_EXPIRY_SECONDS = 4 * 3600; // 4 hours
+  private readonly JWT_EXPIRY_SECONDS = 12 * 3600; // 12 hours
 
   constructor(
     private readonly prisma: PrismaService,

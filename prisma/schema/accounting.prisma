@@ -18,21 +18,20 @@ enum JournalLineType {
 
 enum TransferClassification {
   CAPITAL
-  INCOME
   LOAN
-  REPAYMENT
+  INCOME
   EXPENSE
-  NEUTRAL
-  // Kept for backwards compat
-  ASSET
-  LIABILITY
-  SWAP_IN
   SWAP_OUT
+  SWAP_IN
   PAYMENT
   RECEIVED
-  TRANSFER
-  SKIPPED
+  NEUTRAL
   UNCLASSIFIED
+  // Legacy — kept for old data only, no longer selectable
+  ASSET
+  LIABILITY
+  REPAYMENT
+  SKIPPED
 }
 
 model AccountingAddress {
