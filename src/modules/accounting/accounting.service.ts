@@ -20,6 +20,24 @@ const CHAIN_ID_MAP: Record<string, number> = {
 
 const MAX_PER_PAGE = 1000;
 
+// Exclusive upper-bound instant for a year/quarter selection — start of the period right after
+// the selected one (e.g. year=2026,quarter=1 -> 2026-04-01; year=2026,quarter=undefined -> 2027-01-01).
+function getPeriodBoundary(year: number, quarter?: number): Date {
+  if (quarter) {
+    const endMonth = quarter * 3 + 1;
+    return endMonth > 12
+      ? new Date(`${year + 1}-01-01T00:00:00.000Z`)
+      : new Date(`${year}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000Z`);
+  }
+  return new Date(`${year + 1}-01-01T00:00:00.000Z`);
+}
+
+// Last calendar day (UTC) actually contained in the period, as an ISO date string (YYYY-MM-DD).
+function getPeriodEndDate(year: number, quarter?: number): string {
+  const inclusive = new Date(getPeriodBoundary(year, quarter).getTime() - 24 * 60 * 60 * 1000);
+  return inclusive.toISOString().slice(0, 10);
+}
+
 // Extracts the numeric log/event index from Alchemy uniqueId.
 // Format: "<txHash>:log:<n>" where <n> may be decimal ("145") or hex ("0x91").
 // parseInt without a radix auto-detects the 0x prefix — do NOT pass radix 10.
@@ -670,19 +688,8 @@ export class AccountingService {
     if (!acct) throw new NotFoundException('Address not found');
 
     // Overview always accumulates from the beginning up to the END of the selected period
-    let timestampFilter: { lt: Date } | undefined;
-    if (year && quarter) {
-      const endMonth = quarter * 3 + 1;
-      timestampFilter = {
-        lt: endMonth > 12
-          ? new Date(`${year + 1}-01-01T00:00:00.000Z`)
-          : new Date(`${year}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000Z`),
-      };
-    } else if (year) {
-      timestampFilter = {
-        lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
-      };
-    }
+    const periodBoundary = year ? getPeriodBoundary(year, quarter) : undefined;
+    const timestampFilter: { lt: Date } | undefined = periodBoundary ? { lt: periodBoundary } : undefined;
 
     const transfers = await this.prisma.accountingTransfer.findMany({
       where: { accountingAddressId: addressId, isHidden: false, ...(timestampFilter ? { timestamp: timestampFilter } : {}) },
@@ -834,7 +841,10 @@ export class AccountingService {
     });
     const years = [...new Set(allTimestamps.map(t => t.timestamp!.getFullYear()))].sort((a, b) => b - a);
 
-    return { address: acct, tokens, byClassification, unclassifiedCount, years };
+    const periodEndDate = year ? getPeriodEndDate(year, quarter) : null;
+    const periodEnded = periodBoundary ? Date.now() >= periodBoundary.getTime() : false;
+
+    return { address: acct, tokens, byClassification, unclassifiedCount, years, periodEndDate, periodEnded };
   }
 
   // ---------------------------------------------------------------------------
@@ -924,23 +934,34 @@ export class AccountingService {
   // Token year-end prices (user-entered, per address + year)
   // ---------------------------------------------------------------------------
 
-  async getTokenPrices(namespaceId: string, addressId: string, year: number): Promise<Record<string, string>> {
+  async getTokenPrices(
+    namespaceId: string,
+    addressId: string,
+    year: number,
+  ): Promise<{ tokenSymbol: string; quarter: number; priceChf: string }[]> {
     const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
     const rows = await this.prisma.accountingTokenPrice.findMany({ where: { accountingAddressId: addressId, year } });
-    return Object.fromEntries(rows.map(r => [r.tokenSymbol, r.priceChf]));
+    return rows.map(r => ({ tokenSymbol: r.tokenSymbol, quarter: r.quarter, priceChf: r.priceChf }));
   }
 
-  async upsertTokenPrice(namespaceId: string, addressId: string, year: number, tokenSymbol: string, priceChf: string | null) {
+  async upsertTokenPrice(
+    namespaceId: string,
+    addressId: string,
+    year: number,
+    tokenSymbol: string,
+    priceChf: string | null,
+    quarter = 0,
+  ) {
     const acct = await this.prisma.accountingAddress.findFirst({ where: { id: addressId, namespaceId } });
     if (!acct) throw new NotFoundException('Address not found');
     if (!priceChf) {
-      await this.prisma.accountingTokenPrice.deleteMany({ where: { accountingAddressId: addressId, year, tokenSymbol } });
+      await this.prisma.accountingTokenPrice.deleteMany({ where: { accountingAddressId: addressId, year, quarter, tokenSymbol } });
       return null;
     }
     return this.prisma.accountingTokenPrice.upsert({
-      where: { accountingAddressId_year_tokenSymbol: { accountingAddressId: addressId, year, tokenSymbol } },
-      create: { accountingAddressId: addressId, year, tokenSymbol, priceChf },
+      where: { accountingAddressId_year_quarter_tokenSymbol: { accountingAddressId: addressId, year, quarter, tokenSymbol } },
+      create: { accountingAddressId: addressId, year, quarter, tokenSymbol, priceChf },
       update: { priceChf },
     });
   }
@@ -956,17 +977,14 @@ export class AccountingService {
     let dateFilter: { gte?: Date; lt?: Date } | undefined;
     if (year && quarter) {
       const startMonth = (quarter - 1) * 3 + 1;
-      const endMonth = startMonth + 3;
       dateFilter = {
         gte: new Date(`${year}-${String(startMonth).padStart(2, '0')}-01T00:00:00.000Z`),
-        lt: endMonth > 12
-          ? new Date(`${year + 1}-01-01T00:00:00.000Z`)
-          : new Date(`${year}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000Z`),
+        lt: getPeriodBoundary(year, quarter),
       };
     } else if (year) {
       dateFilter = {
         gte: new Date(`${year}-01-01T00:00:00.000Z`),
-        lt: new Date(`${year + 1}-01-01T00:00:00.000Z`),
+        lt: getPeriodBoundary(year),
       };
     }
 

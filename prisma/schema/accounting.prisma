@@ -118,6 +118,7 @@ model AccountingTokenPrice {
   id                  String   @id @default(cuid())
   accountingAddressId String
   year                Int
+  quarter             Int      @default(0) // 0 = year-end/whole-year, 1-3 = Q1-Q3 override
   tokenSymbol         String
   priceChf            String
   createdAt           DateTime @default(now())
@@ -125,7 +126,7 @@ model AccountingTokenPrice {
 
   accountingAddress AccountingAddress @relation(fields: [accountingAddressId], references: [id], onDelete: Cascade)
 
-  @@unique([accountingAddressId, year, tokenSymbol])
+  @@unique([accountingAddressId, year, quarter, tokenSymbol])
   @@index([accountingAddressId])
   @@map("accounting_token_prices")
 }

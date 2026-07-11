@@ -366,11 +366,11 @@ export class AccountingController {
   }
 
   // ---------------------------------------------------------------------------
-  // Token year-end prices
+  // Token prices (manual, per year + optional quarter bucket)
   // ---------------------------------------------------------------------------
 
   @Get('addresses/:id/token-prices')
-  @ApiOperation({ summary: 'Get user-entered year-end prices for all tokens of an address' })
+  @ApiOperation({ summary: 'Get all user-entered price buckets (year-end + any quarterly overrides) for all tokens of an address' })
   @ApiParam({ name: 'id' })
   @ApiQuery({ name: 'year', required: true, type: Number })
   getTokenPrices(@CurrentNamespace() namespace: Namespace, @Param('id') id: string, @Query('year') year: string) {
@@ -379,14 +379,14 @@ export class AccountingController {
 
   @Post('addresses/:id/token-prices')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Upsert a year-end CHF price for a token' })
+  @ApiOperation({ summary: 'Upsert a manual CHF price for a token (quarter 0 = year-end/whole-year, 1-3 = quarter override)' })
   @ApiParam({ name: 'id' })
   upsertTokenPrice(
     @CurrentNamespace() namespace: Namespace,
     @Param('id') id: string,
-    @Body() body: { year: number; tokenSymbol: string; priceChf: string | null },
+    @Body() body: { year: number; quarter?: number; tokenSymbol: string; priceChf: string | null },
   ) {
-    return this.service.upsertTokenPrice(namespace.id, id, body.year, body.tokenSymbol, body.priceChf);
+    return this.service.upsertTokenPrice(namespace.id, id, body.year, body.tokenSymbol, body.priceChf, body.quarter ?? 0);
   }
 
   // ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { PricesService } from './prices.service';
 import { DailyRateService } from './daily-rate.service';
 import { ScopesGuard } from '../../common/guards/scopes.guard';
 import { RequireScopes } from '../../common/decorators/require-scopes.decorator';
+import { resolveChfRateBase } from '../../config/tokens.config';
 
 const DAILY_RATE_BASES = ['USD', 'EUR', 'BTC', 'ETH', 'CHF'];
 
@@ -111,7 +112,8 @@ export class PricesController {
 
 	@Get('daily')
 	@ApiOperation({ summary: 'Daily CHF close rates for a reference asset (USD/EUR/BTC/ETH/CHF), from 2025 onward' })
-	@ApiQuery({ name: 'base', required: true, example: 'USD' })
+	@ApiQuery({ name: 'base', required: false, example: 'USD', description: 'Reference asset; alternative to symbol' })
+	@ApiQuery({ name: 'symbol', required: false, example: 'WBTC', description: 'Token symbol to resolve to a reference asset instead of passing base directly' })
 	@ApiQuery({ name: 'date', required: false, example: '2026-01-15', description: 'Return the closest close on/before this date instead of the full series' })
 	@ApiResponse({
 		status: 200,
@@ -123,7 +125,17 @@ export class PricesController {
 		},
 	})
 	@ApiResponse({ status: 404, description: 'No daily rate found on/before the given date' })
-	async daily(@Query('base') base: string, @Query('date') date?: string) {
+	async daily(@Query('base') base?: string, @Query('symbol') symbol?: string, @Query('date') date?: string) {
+		if (symbol) {
+			const resolvedBase = resolveChfRateBase(symbol);
+			if (!resolvedBase) return { mapped: false };
+
+			if (!date) throw new BadRequestException('date is required when resolving by symbol');
+			const row = await this.dailyRates.getRateRow(resolvedBase, new Date(date));
+			if (!row) throw new NotFoundException(`No daily rate for ${resolvedBase} on/before ${date}`);
+			return { mapped: true, base: resolvedBase, ...row };
+		}
+
 		const b = base?.toUpperCase();
 		if (!b || !DAILY_RATE_BASES.includes(b)) {
 			throw new BadRequestException(`base must be one of: ${DAILY_RATE_BASES.join(', ')}`);
