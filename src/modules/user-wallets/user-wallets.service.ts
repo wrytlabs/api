@@ -34,11 +34,7 @@ export class UserWalletsService {
   ) {}
 
   private get jwtSecret(): string {
-    return (
-      this.configService.get<string>('JWT_SECRET') ||
-      this.configService.get<string>('API_KEY_SECRET') ||
-      'change-me-in-production'
-    );
+    return this.configService.get<string>('JWT_SECRET')!;
   }
 
   private checksum(address: string): string {

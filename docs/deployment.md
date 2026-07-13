@@ -27,7 +27,7 @@ Copy `.env.example` to `.env` and fill in values.
 |---|---|
 | `NODE_ENV` | `development`, `production`, or `test` |
 | `PORT` | HTTP port (default `3030`) |
-| `API_KEY_SECRET` | Signing secret for API keys (≥ 32 chars) |
+| `JWT_SECRET` | Signing secret for wallet sign-in JWTs (≥ 32 chars) |
 | `ENCRYPTION_KEY` | AES-256-GCM key for sensitive data at rest (≥ 32 chars) |
 | `BASE_URL` | Public base URL (e.g. `https://api.wrytes.io`) |
 | `DATABASE_URL` | PostgreSQL connection string |

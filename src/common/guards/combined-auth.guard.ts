@@ -61,10 +61,7 @@ export class CombinedAuthGuard implements CanActivate {
   }
 
   private async authenticateJwt(token: string, request: any): Promise<boolean> {
-    const secret =
-      this.config.get<string>('JWT_SECRET') ||
-      this.config.get<string>('API_KEY_SECRET') ||
-      'change-me-in-production';
+    const secret = this.config.get<string>('JWT_SECRET')!;
 
     let payload: ReturnType<typeof verifyJwt>;
     try {

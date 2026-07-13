@@ -14,7 +14,6 @@ export default registerAs('app', () => {
 	return {
 		nodeEnv,
 		port,
-		apiKeySecret: process.env.API_KEY_SECRET,
 		isDevelopment,
 		isProduction: nodeEnv === 'production',
 		isTest: nodeEnv === 'test',

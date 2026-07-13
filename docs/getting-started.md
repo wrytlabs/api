@@ -34,7 +34,7 @@ Minimum required variables:
 
 | Variable | Description |
 |---|---|
-| `API_KEY_SECRET` | Secret for API key signing (≥ 32 chars) |
+| `JWT_SECRET` | Signing secret for wallet sign-in JWTs (≥ 32 chars) |
 | `ENCRYPTION_KEY` | AES-256-GCM key for sensitive data at rest (≥ 32 chars) |
 | `DATABASE_URL` | Postgres connection string |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis connection |
